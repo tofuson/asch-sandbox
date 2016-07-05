@@ -1,0 +1,11 @@
+{
+  "name": "asch-sandbox",
+  "version": "1.0.0",
+  "description": "asch sandbox which is used to run sidechain dapps",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "QingFeng Shan <sqf1225@foxmail.com>",
+  "license": "ISC"
+}
