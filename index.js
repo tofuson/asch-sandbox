@@ -8,7 +8,7 @@ var async = require('async');
 
 var callbacks = {};
 
-function SandboxWrapper(file, id, params, apiHandler, debug) {
+function SandboxWrapper(file, id, params, apiHandler, debug, logger) {
 	EventEmitter.call(this);
 
 	if (typeof file !== "string" || file === undefined || file === null) {
@@ -30,6 +30,7 @@ function SandboxWrapper(file, id, params, apiHandler, debug) {
 	this.child = null;
 	this.debug = debug || false;
 	this.callbackCounter = 1;
+	this.logger = logger;
 }
 
 util.inherits(SandboxWrapper, EventEmitter);
@@ -155,12 +156,11 @@ SandboxWrapper.prototype.exit = function () {
 }
 
 SandboxWrapper.prototype._debug = function (data) {
-	console.log("Debug " + this.file + ": \n");
-	console.log(data.toString('utf8'));
+	this.logger.log("dapp[" + this.id + "]", data);
 }
 
 SandboxWrapper.prototype._onError = function (err) {
-	console.log(err.stack)
+	this.logger.error("dapp[" + this.id + "]", err);
 	this.exit();
 	this.emit("error", err);
 }
