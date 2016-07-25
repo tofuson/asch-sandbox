@@ -4,7 +4,6 @@ var fs = require('fs');
 var path = require('path');
 var querystring = require('querystring');
 var Sandbox = require('./sandbox');
-var async = require('async');
 
 var callbacks = {};
 
