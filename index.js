@@ -39,12 +39,7 @@ SandboxWrapper.prototype._getCallbackCounter = function() {
 }
 
 SandboxWrapper.prototype._parse = function (data) {
-	//console.log('receive dapp msg', data);
-	try {
-		var json = JSON.parse(data);
-	} catch (e) {
-		return this._onError(new Error("Can't parse JSON response from DApp: \n" + data + "\n" + e.toString()));
-	}
+	var json = data;
 
 	if (json.callback_id === null || json.callback_id === undefined) {
 		return this._onError(new Error("Incorrect response from vm, missed callback id field"));
@@ -88,14 +83,7 @@ SandboxWrapper.prototype._parse = function (data) {
 				error: err,
 				response: response || {}
 			};
-
-			try {
-				var responseString = JSON.stringify(responseObj);
-			} catch (e) {
-				return this._onError(new Error("Can't make response: " + e.toString()));
-			}
-
-			this.child.postMessage(responseString);
+			this.child.postMessage(responseObj);
 		}.bind(this));
 	} else {
 		this._onError(new Error("Incorrect response type from vm"));
@@ -103,23 +91,21 @@ SandboxWrapper.prototype._parse = function (data) {
 }
 
 SandboxWrapper.prototype.run = function () {
-	this.child = new Sandbox();
-	var self = this;
-	fs.readFile(this.file, 'utf8', function(err, code) {
-		if (err) {
-			return self._onError('failed to read dapp entry point file: ' + err);
-		}
-		self.child.run(code, function(err) {
-			return self._onError('dapp exit with reason: ' + err.result);
-		});
-		
-		self.child.on('error', self._onError.bind(self));
-		if (self.debug) {
-			self.child.on('stdout', self._debug.bind(self));	
-		}
-		self.child.on('stderr', self._debug.bind(self));
-		self.child.on('message', self._parse.bind(self));
+	this.child = new Sandbox({
+		file: this.file,
+		args: this.params	
 	});
+	var self = this;
+	self.child.run(function(err) {
+		return self._onError('dapp exit with reason: ' + err.result);
+	});
+		
+	self.child.on('error', self._onError.bind(self));
+	if (self.debug) {
+		self.child.on('stdout', self._debug.bind(self));	
+	}
+	self.child.on('stderr', self._debug.bind(self));
+	self.child.on('message', self._parse.bind(self));
 }
 
 SandboxWrapper.prototype.setApi = function (apiHanlder) {
@@ -136,15 +122,8 @@ SandboxWrapper.prototype.sendMessage = function (message, callback) {
 		type: "asch_call",
 		message: message
 	};
-	
-	try {
-		var messageString = JSON.stringify(messageObj);
-	} catch (e) {
-		return setImmediate(callback, "Can't stringify message: " + e.toString());
-	}
-
 	callbacks[callback_id] = callback;
-	this.child.postMessage(messageString);
+	this.child.postMessage(messageObj);
 }
 
 SandboxWrapper.prototype.exit = function () {

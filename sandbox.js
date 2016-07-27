@@ -23,7 +23,9 @@ function Sandbox(options) {
   self.options = {
     timeout: 0,
     node:    'node',
-    shovel:  path.join(__dirname, 'shovel.js')
+    shovel:  path.join(__dirname, 'shovel2.js'),
+    file: options.file,
+    args: options.args
   };
 
   // self.info = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json')));
@@ -41,7 +43,12 @@ Sandbox.prototype.run = function(code, hollaback) {
   var self = this;
   var timer;
   var stdout = '';
-  self.child = spawn(this.options.node, [this.options.shovel], { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+  var childArgs = [this.options.shovel, this.options.file].concat(this.options.args);
+  self.child = spawn(
+    this.options.node,
+    childArgs,
+    { stdio: ['pipe', 'pipe', 'pipe', 'ipc']
+  });
   var output = function(data) {
     // if (!!data) {
     //   stdout += data;
@@ -56,16 +63,16 @@ Sandbox.prototype.run = function(code, hollaback) {
 
   // Listen
   self.child.stdout.on('data', function(data) {
-    self.emit('stdout', data.toString('utf8'));
+    self.emit('stdout', data.toString('utf8').replace(/\n$/, ''));
   });
 
   self.child.stderr.on('data', function(data) {
-    self.emit('stderr', data.toString('utf8'));
+    self.emit('stderr', data.toString('utf8').replace(/\n$/, ''));
   });
 
   // Pass messages out from child process
   // These messages can be handled by Sandbox.on('message', function(message){...});
-  self.child.on('message', function(message){
+  self.child.on('message', function(message) {
     if (message === '__sandbox_inner_ready__') {
 
       self.emit('ready');
@@ -99,10 +106,6 @@ Sandbox.prototype.run = function(code, hollaback) {
       }
     });
   });
-
-  // Go
-  self.child.stdin.write(code);
-  self.child.stdin.end();
 
   if (self.options.timeout > 0) {
     self.child.timer = setTimeout(function () {
