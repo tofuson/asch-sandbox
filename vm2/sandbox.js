@@ -47,10 +47,10 @@ return ((vm, host) => {
 			} else {
 				try {
 					// Load module
-					var code = `(function (exports, require, module, __filename, __dirname) { 'use strict'; ${fs.readFileSync(filename, "utf8")} \n});`;
+					var code = `(function (exports, require, module, __filename, __dirname) { ${fs.readFileSync(filename, "utf8")} \n});`;
 			
 					// Precompile script
-					let script = new Script(code, { 
+					let script = new Script(code, {
 						filename: filename || "vm.js",
 						displayErrors: false
 					});
@@ -60,7 +60,7 @@ return ((vm, host) => {
 						displayErrors: false
 					});
 				} catch (ex) {
-					throw Contextify.value(e);
+					throw Contextify.value(ex);
 				}
 		
 				// run script
@@ -185,6 +185,10 @@ return ((vm, host) => {
 					throw new VMError(`Access denied to require '${modulename}'`, "EDENIED");
 				}
 				
+				return _requireBuiltin(modulename);
+			}
+
+			if (host.Array.isArray(vm.options.require.builtin) && vm.options.require.builtin.indexOf(modulename) != -1) {
 				return _requireBuiltin(modulename);
 			}
 			

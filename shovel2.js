@@ -5,34 +5,13 @@ var NodeVM = require('./vm2').NodeVM;
 var entryFile = process.argv[2];
 var rootDir = path.dirname(entryFile);
 
-function getNodeModules() {
-    var nodeModules = {};
-    [
-        'async',
-        'bignumber',
-        'bytebuffer',
-        'change-case',
-        'ed25519',
-        'extend',
-        'ip',
-        'z-schema'
-    ].forEach(function (name) {
-        nodeModules[name] = require(name);
-    });
-}
-
 var vm = new NodeVM({
     console: 'inherit',
     sandbox: {
-        console: console,
-        process: {
-            exit: process.exit,
-            argv: process.argv.slice(2),
-        },
-        node_modules: getNodeModules()
     },
     require: {
         external: true,
+        context: 'sandbox',
         builtin: [
             'assert',
             'crypto',
@@ -44,7 +23,17 @@ var vm = new NodeVM({
             'string_decoder',
             'url',
             'util',
-            'zlib'
+            'zlib',
+
+            // following are external builtin modules
+            'async',
+            'bignumber',
+            'bytebuffer',
+            'change-case',
+            'ed25519',
+            'extend',
+            'ip',
+            'z-schema'
         ],
         root: rootDir
     }
