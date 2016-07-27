@@ -93,16 +93,19 @@ SandboxWrapper.prototype._parse = function (data) {
 SandboxWrapper.prototype.run = function () {
 	this.child = new Sandbox({
 		file: this.file,
-		args: this.params	
+		args: this.params
 	});
 	var self = this;
 	self.child.run(function(err) {
 		return self._onError('dapp exit with reason: ' + err.result);
 	});
-		
+
+	self.child.on('exit', function (code) {
+		self.emit('exit', code);
+	});
 	self.child.on('error', self._onError.bind(self));
 	if (self.debug) {
-		self.child.on('stdout', self._debug.bind(self));	
+		self.child.on('stdout', self._debug.bind(self));
 	}
 	self.child.on('stderr', self._debug.bind(self));
 	self.child.on('message', self._parse.bind(self));
@@ -128,8 +131,7 @@ SandboxWrapper.prototype.sendMessage = function (message, callback) {
 
 SandboxWrapper.prototype.exit = function () {
 	if (this.child) {
-		// this.child.kill();
-		this.emit("exit");
+		this.child.kill();
 	}
 }
 
@@ -139,8 +141,6 @@ SandboxWrapper.prototype._debug = function (data) {
 
 SandboxWrapper.prototype._onError = function (err) {
 	this.logger.error("dapp[" + this.id + "]", err);
-	this.exit();
-	this.emit("error", err);
 }
 
 module.exports = SandboxWrapper;

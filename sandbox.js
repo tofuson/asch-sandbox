@@ -18,6 +18,7 @@ function Sandbox(options) {
   // message_queue is used to store messages that are meant to be sent
   // to the sandbox before the sandbox is ready to process them
   self._ready = false;
+  self._exited = false;
   self._message_queue = [];
 
   self.options = {
@@ -39,7 +40,7 @@ util.inherits(Sandbox, EventEmitter);
 // Instance Methods
 //-----------------------------------------------------------------------------
 
-Sandbox.prototype.run = function(code, hollaback) {
+Sandbox.prototype.run = function() {
   var self = this;
   var timer;
   var stdout = '';
@@ -49,17 +50,6 @@ Sandbox.prototype.run = function(code, hollaback) {
     childArgs,
     { stdio: ['pipe', 'pipe', 'pipe', 'ipc']
   });
-  var output = function(data) {
-    // if (!!data) {
-    //   stdout += data;
-    // }
-  };
-
-  if (typeof hollaback == 'undefined') {
-    hollaback = console.log;
-  } else {
-    hollaback = hollaback.bind(this);
-  }
 
   // Listen
   self.child.stdout.on('data', function(data) {
@@ -92,19 +82,8 @@ Sandbox.prototype.run = function(code, hollaback) {
     if (self.options.timeout > 0 && timer) {
       clearTimeout(timer);
     }
-    setImmediate(function(){
-      if (!stdout) {
-        hollaback({ result: '', console: [] });
-      } else {
-        var ret;
-        try {
-          ret = JSON.parse(stdout);
-        } catch (e) {
-          ret = { result: 'JSON Error (data was "'+stdout+'")', console: [] }
-        }
-        hollaback(ret);
-      }
-    });
+    self.exited = true;
+    self.emit('exit', code);
   });
 
   if (self.options.timeout > 0) {
@@ -117,6 +96,13 @@ Sandbox.prototype.run = function(code, hollaback) {
   }
 
 };
+
+Sandbox.prototype.kill = function () {
+  var self = this;
+  if (self._ready && !self.exited &&　self.child) {
+    self.child.kill('SIGKILL');
+  }
+}
 
 // Send a message to the code running inside the sandbox
 // This message will be passed to the sandboxed

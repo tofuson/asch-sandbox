@@ -41,12 +41,20 @@ var vm = new NodeVM({
 
 var dapp = vm.run(fs.readFileSync(entryFile), entryFile);
 
+process.on('SIGTERM', function () {
+});
+process.on('SIGINT', function () {
+});
 process.on('message', function (data) {
     dapp.processParentMessage(data);
 });
 
 dapp.on('message', function (data) {
     process.send(data);
+});
+
+dapp.on('exit', function (code) {
+    process.exit(code);
 });
 
 dapp.run();
