@@ -57,5 +57,5 @@ dapp.on('exit', function (code) {
     process.exit(code);
 });
 
-dapp.run();
+dapp.run(process.argv.slice(3));
 process.send('__sandbox_inner_ready__');
