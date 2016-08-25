@@ -5,8 +5,6 @@ var path = require('path');
 var querystring = require('querystring');
 var Sandbox = require('./sandbox');
 
-var callbacks = {};
-
 function SandboxWrapper(file, id, params, apiHandler, debug, logger) {
 	EventEmitter.call(this);
 
@@ -30,6 +28,7 @@ function SandboxWrapper(file, id, params, apiHandler, debug, logger) {
 	this.debug = debug || false;
 	this.callbackCounter = 1;
 	this.logger = logger;
+	this.callbacks = {};
 }
 
 util.inherits(SandboxWrapper, EventEmitter);
@@ -56,7 +55,7 @@ SandboxWrapper.prototype._parse = function (data) {
 	}
 
 	if (json.type == "dapp_response") {
-		var callback = callbacks[callback_id];
+		var callback = this.callbacks[callback_id];
 
 		if (!callback) {
 			return this._onError(new Error("Asch can't find callback_id from vm"));
@@ -65,7 +64,7 @@ SandboxWrapper.prototype._parse = function (data) {
 		var error = json.error;
 		var response = json.response;
 
-		delete callbacks[callback_id];
+		delete this.callbacks[callback_id];
 		setImmediate(callback, error, response);
 	} else if (json.type == "dapp_call") {
 		var message = json.message;
@@ -125,7 +124,7 @@ SandboxWrapper.prototype.sendMessage = function (message, callback) {
 		type: "asch_call",
 		message: message
 	};
-	callbacks[callback_id] = callback;
+	this.callbacks[callback_id] = callback;
 	this.child.postMessage(messageObj);
 }
 
