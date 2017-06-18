@@ -4,8 +4,20 @@
   "description": "asch sandbox which is used to run sidechain dapps",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "./node_modules/.bin/mocha"
   },
   "author": "QingFeng Shan <sqf1225@foxmail.com>",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "change-case": "3.0.0",
+    "json-sql": "https://github.com/sqfasd/json-sql/tarball/master",
+    "sequelize": "4.1.0",
+    "sqlite3": "git+https://github.com/sqfasd/node-sqlite3.git"
+  },
+  "devDependencies": {
+    "chai": "^3.0.0",
+    "gulp": "^3.9.1",
+    "mocha": "^2.2.5",
+    "should": "~4.6.0"
+  }
 }

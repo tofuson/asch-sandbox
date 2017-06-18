@@ -48,8 +48,10 @@ Sandbox.prototype.run = function() {
   self.child = spawn(
     this.options.node,
     childArgs,
-    { stdio: ['pipe', 'pipe', 'pipe', 'ipc']
-  });
+    {
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc']
+    }
+  );
 
   // Listen
   self.child.stdout.on('data', function(data) {
