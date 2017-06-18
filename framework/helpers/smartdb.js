@@ -6,10 +6,39 @@ function deconstruct(obj) {
   let result = null
   for (let k in obj) {
     result = [k, obj[k]]
-    if (++i > 1) throw new Error('Multi k-v condition not supported')
+    if (++i > 1) throw new Error('Multi k-v deconstruct not supported')
   }
   if (!result) throw new Error('Empty condition no supported')
   return result
+}
+
+function fromMapToToken(obj) {
+  let i = 0
+  let result = []
+  for (let k in obj) {
+    result.push(k + '@' + obj[k])
+  }
+  if (!result) throw new Error('Empty condition no supported')
+  return result.join('.')
+}
+
+function fromIndexSchemaToToken(i, values) {
+  let key = ''
+  if (typeof i === 'string') {
+    if (!values[i]) throw new Error('Empty index not supported: ' + i)
+    key = i + '@' + values[i]
+  } else if (Array.isArray(i)) {
+    let keyGroup = []
+    for (let j in i) {
+      let k = i[j]
+      if (!values[k]) throw new Error('Empty index not supported: ' + k)
+      keyGroup.push(k + '@' + values[k])
+    }
+    key = keyGroup.join('.')
+  } else {
+    throw new Error('Index format not supported')
+  }
+  return key
 }
 
 function fromModelToTable(model) {
@@ -39,11 +68,14 @@ class SmartDB {
 
   rollbackBlock() {
     this.lockCache.clear()
+    this.rollbackTransaction()
     this.undoLogs(this.blockLogs)
   }
 
   async commitBlock() {
-    this.lockCache.clear()
+    if (this.trsLogs.length > 0) {
+      this.commitTransaction()
+    }
 
     const BATCH_SIZE = 100
     let batchs = []
@@ -65,6 +97,11 @@ class SmartDB {
     }
 
     this.blockLogs = new Array
+    this.lockCache.clear()
+
+    if (batchs.length === 0) {
+      return true
+    }
 
     try {
       var t = await this.app.db.transaction()
@@ -74,11 +111,10 @@ class SmartDB {
         await this.app.db.query(sql)
       }
       await t.commit()
-      return true
     } catch (e) {
       console.log('Failed to commit block: ' + e)
       await t.rollback()
-      return false
+      throw new Error('Failed to commit block: ' + e)
     }
   }
 
@@ -95,25 +131,24 @@ class SmartDB {
     this.trsLogs = new Array
   }
 
-  async load(model, attributes, indexes) {
+  async load(model, fields, indexes) {
     let app = this.app
-    let results = await app.model[model].findAll({ attributes: attributes })
+    let results = await app.model[model].findAll({ fields: fields })
     let invertedList = new Map
     results.forEach((item) => {
       indexes.forEach((i) => {
-        if (!item[i]) throw new Error('Empty index not supported: ' + i)
-        let key = i + '@' + item[i]
+        let key = fromIndexSchemaToToken(i, item)
         if (invertedList.get(key) != undefined) throw Error('Ununique index not supported: ' + i)
         let cacheItem = {}
-        attributes.forEach((attr) => {
-          cacheItem[attr] = item[attr]
+        fields.forEach((f) => {
+          cacheItem[f] = item[f]
         })
         invertedList.set(key, cacheItem)
       })
     })
     this.indexes.set(model, invertedList)
     this.indexSchema.set(model, {
-      attributes: attributes,
+      fields: fields,
       indexes: indexes
     })
   }
@@ -123,11 +158,9 @@ class SmartDB {
     let invertedList = this.indexes.get(model)
     let schema = this.indexSchema.get(model)
     if (!invertedList || !schema) throw new Error('Model not found in cache: ' + model)
-    let c = deconstruct(cond)
-    if (schema.indexes.indexOf(c[0]) === -1) throw new Error('Not index key: ' + c[0])
-    let value = invertedList.get(c[0] + '@' + c[1])
-    if (!value) throw new Error('Value not found for: ' + cond)
-    return value
+    let token = fromMapToToken(cond)
+    let value = invertedList.get(token)
+    return value || null
   }
 
   lock(key) {
@@ -148,15 +181,15 @@ class SmartDB {
 
     let cacheValues = {}
     for (let k in values) {
-      if (schema.attributes.indexOf(k) !== -1) {
+      if (schema.fields.indexOf(k) !== -1) {
         cacheValues[k] = values[k]
       }
     }
 
     schema.indexes.forEach(function (i) {
-      let indexKey = i + '@' + values[i]
-      if (!!invertedList.get(indexKey)) throw Error('Ununique index not supported: ' + indexKey)
-      invertedList.set(indexKey, cacheValues)
+      let key = fromIndexSchemaToToken(i, values)
+      if (!!invertedList.get(key)) throw Error('Ununique index not supported: ' + key)
+      invertedList.set(key, cacheValues)
     })
   }
 
@@ -167,8 +200,8 @@ class SmartDB {
 
     for (let k in values) {
       schema.indexes.forEach(function (i) {
-        let indexKey = k + '@' + values[k]
-        invertedList.delete(indexKey)
+        let key = fromIndexSchemaToToken(i, values)
+        invertedList.delete(key)
       })
     }
   }
@@ -185,14 +218,13 @@ class SmartDB {
   update(model, modifier, cond) {
     if (!model || !modifier || !cond) throw new Error('Invalid params')
     let m = deconstruct(modifier)
-    let c = deconstruct(cond)
 
     this.trsLogs.push(['Update', model, modifier, cond])
     let invertedList = this.indexes.get(model)
     if (!invertedList) return
 
-    let indexKey = c.join('@')
-    let item = invertedList.get(indexKey)
+    let token = fromMapToToken(cond)
+    let item = invertedList.get(token)
     if (!item) return
     this.trsLogs[this.trsLogs.length - 1].push(item[m[0]])
     item[m[0]] = m[1]
@@ -203,10 +235,9 @@ class SmartDB {
     if (!invertedList) return
 
     let m = deconstruct(modifier)
-    let c = deconstruct(cond)
+    let token = fromMapToToken(cond)
 
-    let indexKey = c.join('@')
-    let item = invertedList.get(indexKey)
+    let item = invertedList.get(token)
     if (!item) return
 
     if (!oldValue) throw new Error('Old value should exists')

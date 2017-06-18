@@ -14,7 +14,7 @@ module.exports = {
       not_null: true
     },
     {
-      name: 'amount',
+      name: 'balance',
       type: 'String',
       length: 50,
       not_null: true

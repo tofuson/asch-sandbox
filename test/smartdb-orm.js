@@ -3,7 +3,8 @@ let fs = require('fs')
 let assert = require('chai').assert
 let chai = require('chai')
 let SmartDB = require('../framework/helpers/smartdb.js')
-let Orm = require('../framework/helpers/orm.js')
+let ORM = require('../framework/helpers/orm.js')
+let BalanceManager = require('../framework/helpers/balance-manager.js')
 
 const DB_FILE = path.join('/tmp', 'blockchain.db')
 const USER1 = {
@@ -23,7 +24,7 @@ describe('smartdb-orm', () => {
 
 
   let app = {
-    db: new Orm('', '', '', { storage: DB_FILE }),
+    db: new ORM('', '', '', { storage: DB_FILE }),
     model: {}
   }
 
@@ -60,11 +61,15 @@ describe('smartdb-orm', () => {
     app.model.User = User
     await User.sync()
     await User.create(USER1)
+
+    let Balance = app.db.define('balance', require('../framework/model/balance'), { timestamps: false })
+    app.model.Balance = Balance
+    await Balance.sync()
   })
 
   after(async () => {
     app.db.close()
-    fs.unlinkSync(DB_FILE)
+    //fs.unlinkSync(DB_FILE)
   })
 
   it('should pass all normal tests', async () => {
@@ -74,8 +79,8 @@ describe('smartdb-orm', () => {
     assert.deepEqual(sdb.get('User', { id: USER1.id }), USER1)
     assert.deepEqual(sdb.get('User', { name: USER1.name }), USER1)
     assert.throws(() => sdb.get(), Error, /Invalid params/)
-    assert.throws(() => sdb.get('User', { name: 'not_exist_name' }, Error, /Value not found/))
-    assert.throws(() => sdb.get('User', { phone: USER1.phone }, Error, /Not index key/))
+    assert.equal(sdb.get('User', { phone: USER1.phone }), null)
+    assert.equal(sdb.get('User', { name: 'not_exist_name' }), null)
 
     sdb.beginBlock()
 
@@ -94,7 +99,7 @@ describe('smartdb-orm', () => {
     sdb.create('User', USER2)
     assert.deepEqual(sdb.get('User', { id: USER2.id }), USER2)
     sdb.rollbackTransaction()
-    assert.throws(() => sdb.get('User', { id: USER2.id }, Error, /Value not found/))
+    assert.equal(sdb.get('User', { id: USER2.id }), null)
     sdb.create('User', USER2)
     sdb.commitTransaction()
     assert.deepEqual(sdb.get('User', { id: USER2.id }), USER2)
@@ -109,13 +114,13 @@ describe('smartdb-orm', () => {
 
     sdb.beginTransaction()
     sdb.del('User', { id: USER1.id })
-    assert.throws(() => sdb.get('User', { name: USER1.name }, Error, /Value not found/))
+    assert.equal(sdb.get('User', { name: USER1.name }), null)
     sdb.rollbackTransaction()
     assert.deepEqual(sdb.get('User', { id: USER1.id }), USER1)
     assert.deepEqual(sdb.get('User', { name: USER1.name }), USER1)
     sdb.del('User', { id: USER1.id })
     sdb.commitTransaction()
-    assert.throws(() => sdb.get('User', { name: USER1.name }, Error, /Value not found/))
+    assert.equal(sdb.get('User', { name: USER1.name }), null)
 
     await sdb.commitBlock()
 
@@ -126,9 +131,52 @@ describe('smartdb-orm', () => {
     let user2 = await app.model.User.findOne({ condition: { id: USER2.id } })
     assert.notEqual(user2, null)
     assert.equal(user2.age, 45)
+
+    let count = await app.model.User.count({ id: USER2.id })
+    assert.equal(count, 1)
+    count = await app.model.User.count({ id: USER1.id })
+    assert.equal(count, 0)
+    let exists = await app.model.User.exists({ id: USER2.id })
+    assert.equal(exists, true)
+    exists = await app.model.User.exists({ id: USER1.id })
+    assert.equal(exists, false)
   })
 
-  it('benchmark', async () => {
+  it('test balance manager', async () => {
+    let sdb = new SmartDB(app)
+    let bm = new BalanceManager(sdb)
+    await sdb.load('Balance', ['address', 'currency', 'balance'], [['address', 'currency']])
+
+    const B1 = {
+      address: 'AAA',
+      currency: 'XAS'
+    }
+    sdb.beginBlock()
+    sdb.beginTransaction()
+
+    assert.equal(sdb.get('Balance', B1), null)
+    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '0')
+    bm.decreaseBalance(B1.address, B1.currency, '1000')
+    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '-1000')
+    bm.increaseBalance(B1.address, B1.currency, '1500')
+    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '500')
+
+    sdb.rollbackTransaction()
+    bm.increaseBalance(B1.address, B1.currency, '1000')
+    bm.decreaseBalance(B1.address, B1.currency, '500')
+    sdb.commitTransaction()
+    await sdb.commitBlock()
+
+    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '500')
+
+    let obj = await app.model.Balance.findOne({ condition: B1 })
+    assert.notEqual(obj, null)
+    assert.equal(obj.address, B1.address)
+    assert.equal(obj.currency, B1.currency)
+    assert.equal(obj.balance, '500')
+  })
+
+  it.skip('benchmark', async () => {
     let sdb = new SmartDB(app)
     sdb.beginBlock()
     sdb.beginTransaction()

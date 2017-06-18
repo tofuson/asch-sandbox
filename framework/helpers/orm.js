@@ -60,6 +60,7 @@ class Model {
       condition: options.condition
     }).query
     let results = await this.db.query(sql)
+    // console.log('findOne', sql, results)
     if (!results || results.length === 0) return null
     return this.parseRows(fields, results)[0]
   }
@@ -71,6 +72,23 @@ class Model {
       values: values
     }).query
     return this.db.query(sql)
+  }
+
+  async exists(condition) {
+    let count = await this.count(condition)
+    return count > 0
+  }
+
+  async count(condition) {
+    var sql = jsonSql.build({
+      type: 'select',
+      table: this.schema.table,
+      fields: ['count(*)'],
+      condition: condition
+    }).query
+    sql  = sql.replace(/"/g, '')
+    let results = await this.db.query(sql)
+    return Number(results[0][0])
   }
 }
 
