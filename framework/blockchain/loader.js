@@ -9,45 +9,12 @@ function Loader(cb, _library) {
 	cb(null, self);
 }
 
-private.loadBlockChain = function () {
-	var offset = 0, limit = 1000;
+private.loadBlockChain = async function () {
+	let count = modules.blockchain.blocks.count()
 
-	modules.blockchain.blocks.count(function (err, count) {
-		if (err) {
-			return library.logger("Failed to get blocks count", err)
-		}
-
-		library.logger("loading blocks total " + count);
-		async.until(
-			function () {
-				return count < offset
-			}, function (cb) {
-				modules.blockchain.blocks.loadBlocksOffset(limit, offset, function (err) {
-					if (err) {
-						return setImmediate(cb, err);
-					}
-
-					offset = offset + limit;
-
-					setImmediate(cb);
-				});
-			}, function (err) {
-				if (err) {
-					library.logger("loadBlocksOffset", err);
-					if (err.block) {
-						library.logger("Blockchain failed at ", err.block.height)
-						modules.blockchain.blocks.simpleDeleteAfterBlock(err.block.height, function (err) {
-							library.logger("Blockchain clipped");
-							library.bus.message("blockchainLoaded");
-						})
-					}
-				} else {
-					library.logger("Blockchain loaded");
-					library.bus.message("blockchainLoaded");
-				}
-			}
-		)
-	});
+	library.logger('total blocks ' + count)
+	modules.blockchain.blocks.getBlock()
+	library.bus.message("blockchainLoaded");
 }
 
 Loader.prototype.onBind = function (_modules) {
@@ -55,7 +22,13 @@ Loader.prototype.onBind = function (_modules) {
 }
 
 Loader.prototype.onBlockchainReady = function () {
-	private.loadBlockChain();
+	(async () => {
+		try {
+			await private.loadBlockChain()
+		} catch (e) {
+			library.logger('Loader#loadBlockChain error: ' + e)
+		}
+	})()
 }
 
 Loader.prototype.onMessage = function (msg) {

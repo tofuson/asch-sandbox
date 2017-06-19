@@ -1,9 +1,12 @@
 var fs = require('fs')
 var path = require('path')
 var NodeVM = require('./vm2').NodeVM
-var Sequelize = require('sequelize')
+//var Sequelize = require('sequelize')
 var changeCase = require('change-case')
 var helpers = require('./framework/helpers')
+var ORM = require('./framework/helpers/orm')
+var SmartDB = require('./framework/helpers/smartdb')
+var BalanceManager = require('./framework/helpers/balance-manager')
 
 var rootDir = path.join(__dirname, 'framework')
 var entryFile = path.join(rootDir, 'index.js')
@@ -98,25 +101,29 @@ async function loadContracts(dir) {
 }
 
 async function main() {
-    let sequelize = new Sequelize('', '', '', {
-        dialect: 'sqlite',
-        storage: path.join(dappRootDir, 'blockchain.db'),
-        logging: false
-    });
-
     global.app = {
-        db: sequelize,
-        DB: Sequelize,
+        db: null,
+        sdb: null,
+        balances: null,
         model: {},
         contract: {},
         rootDir: dappRootDir
     }
+    app.db = new ORM('', '', '', {
+        dialect: 'sqlite',
+        storage: path.join(dappRootDir, 'blockchain.db'),
+        logging: false
+    })
+
+    app.sdb = new SmartDB(app)
+    app.balances = new BalanceManager(app.sdb)
 
     await loadModels(path.join(rootDir, 'model'))
     await loadModels(path.join(dappRootDir, 'model'))
     await loadContracts(path.join(rootDir, 'contract'))
     await loadContracts(path.join(dappRootDir, 'contract'))
 
+    await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])
     runDapp(global.app)
 }
 

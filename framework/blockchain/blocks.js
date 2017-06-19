@@ -19,6 +19,8 @@ function Blocks(cb, _library) {
 		private.genesisBlock = require(path.join(app.rootDir, "genesis.json"));
 	} catch (e) {
 		library.logger("Failed to load genesis.json");
+		process.exit(3)
+		return
 	}
 
 	private.lastBlock = private.genesisBlock;
@@ -64,7 +66,7 @@ private.popLastBlock = function (oldLastBlock, cb) {
 
 			modules.blockchain.accounts.undoMerging({
 				publicKey: oldLastBlock.delegate,
-				balance: {"XAS": fee}
+				balance: { "XAS": fee }
 			}, function (err) {
 				private.deleteBlock(oldLastBlock.id, function (err) {
 					if (err) {
@@ -75,84 +77,90 @@ private.popLastBlock = function (oldLastBlock, cb) {
 				});
 			});
 		});
-	}, {id: oldLastBlock.prevBlockId});
+	}, { id: oldLastBlock.prevBlockId });
 }
 
-private.verify = function (block, cb, scope) {
+private.verify = async function (block) {
+	console.log('enter Blocks#verify')
 	if (!block) {
-	  console.log('verify block undefined');
-	  return cb();
+		console.log('verify block undefined');
+		return
 	}
-	if (block.id == private.genesisBlock.id) {
-		try {
-			var valid = modules.logic.block.verifySignature(block);
-		} catch (e) {
-			return cb(e.toString());
-		}
-		// if (!valid) {
-			// return cb("Invalid block");
-		// }
-		return cb();
-	} else {
-		if (block.delegates) {
-			return cb("Invalid delegates in block");
-		}
-
-		if (block.prevBlockId != (scope || private).lastBlock.id) {
-			return cb("Invalid previous block");
-		}
-
-		if (block.pointHeight < (scope || private).lastBlock.pointHeight) {
-			return cb("Invalid point height")
-		}
+	try {
+		var valid = modules.logic.block.verifySignature(block);
+	} catch (e) {
+		throw new Error('Failed to verify signature: ' + e)
+	}
+	if (!valid) {
+		throw new Error('Invalid block signature')
+	}
+	if (block.delegates) {
+		throw new Error("Invalid delegates in block");
 	}
 
-	if (block.timestamp <= (scope || private).lastBlock.timestamp || block.timestamp > slots.getNow()) {
-		return cb("Invalid timestamp");
+	if (block.id !== private.genesisBlock.id) {
+		if (block.prevBlockId != private.lastBlock.id) {
+			throw new Error("Invalid previous block");
+		}
+
+		if (block.pointHeight < private.lastBlock.pointHeight) {
+			throw new Error("Invalid point height")
+		}
+
+		if (block.timestamp <= private.lastBlock.timestamp || block.timestamp > slots.getNow()) {
+			throw new Error("Invalid timestamp");
+		}
+
+		let pointBlock = await PIFY(modules.api.blocks.getBlock)(block.pointId)
+		if (!pointBlock) {
+			throw new Error('Point block not found')
+		}
+		let pointExists = await app.model.Block.exists({ pointId: block.pointId })
+		if (pointExists) {
+			throw new Error('Parent block already pointed')
+		}
 	}
 
 	if (block.payloadLength > 1024 * 1024) {
-		return cb("Invalid payload length");
+		throw new Error("Invalid payload length");
 	}
 
 	try {
 		var hash = new Buffer(block.payloadHash, "hex");
 		if (hash.length != 32) {
-			return cb("Invalid payload hash");
+			throw new Error("Invalid payload hash");
 		}
 	} catch (e) {
-		return cb("Invalid payload hash");
+		throw new Error("Invalid payload hash");
 	}
 
-	modules.api.blocks.getBlock(block.pointId, function (err, aschBlock) {
-		if (err || !aschBlock) {
-			return cb(err || "Block not found");
-		}
+	let payloadHash = crypto.createHash('sha256')
+	let payloadLength = 0
+	try {
+		for (let i in block.transactions) {
+			let transaction = block.transactions[i]
+			var bytes = modules.logic.transaction.getBytes(transaction)
+			payloadHash.update(bytes)
+			payloadLength += bytes.length
 
-		modules.api.sql.select({
-			table: "blocks",
-			condition: {
-				id: block.pointId
-			},
-			fields: ["id"]
-		}, function (err, found) {
-			if (err || found.length) {
-				return cb("Block already exists");
-			}
-
-			try {
-				var valid = modules.logic.block.verifySignature(block);
-			} catch (e) {
-				return cb(e.toString());
-			}
-
+			let valid = modules.logic.transaction.verify(transaction)
 			if (!valid) {
-				return cb("Failed to verify block signature");
+				throw new Error('Invalid transaction signature')
 			}
+		}
+	} catch (e) {
+		throw new Error('Failed to verify transaction: ' + e)
+	}
+	
+	payloadHash = payloadHash.digest()
 
-			return cb();
-		});
-	});
+	if (payloadLength != block.payloadLength) {
+		throw new Error('Payload length is incorrect')
+	}
+
+	if (payloadHash.toString("hex") != block.payloadHash) {
+		throw new Error('Payload hash is incorrect')
+	}
 }
 
 private.getIdSequence = function (height, cb) {
@@ -161,28 +169,28 @@ private.getIdSequence = function (height, cb) {
 			type: "union",
 			unionqueries: [{
 				table: "blocks",
-				fields: [{id: "id"}, {expression: "max(height)", alias: "height"}],
+				fields: [{ id: "id" }, { expression: "max(height)", alias: "height" }],
 				group: {
 					expression: "(cast(height / 101 as integer) + (case when height % 101 > 0 then 1 else 0 end))",
 					having: {
-						height: {$lte: height}
+						height: { $lte: height }
 					}
 				}
 			}, {
-				table: "blocks",
-				condition: {
-					height: 1
-				},
-				fields: [{id: "id"}, {expression: "1", alias: "height"}]
-			}],
+					table: "blocks",
+					condition: {
+						height: 1
+					},
+					fields: [{ id: "id" }, { expression: "1", alias: "height" }]
+				}],
 			sort: {
 				height: 1
 			},
 			limit: 1000
 		},
 		alias: "s",
-		fields: [{height: "height"}, {expression: "group_concat(s.id)", alias: "ids"}]
-	}, {height: Number, ids: Array}, function (err, rows) {
+		fields: [{ height: "height" }, { expression: "group_concat(s.id)", alias: "ids" }]
+	}, { height: Number, ids: Array }, function (err, rows) {
 		if (err || !rows.length) {
 			return cb(err || "Failed to get block id sequence")
 		}
@@ -198,7 +206,7 @@ private.rollbackUntilBlock = function (block, cb) {
 			pointHeight: block.pointHeight
 		},
 		fields: ["id", "height"]
-	}, {"id": String, "height": Number}, function (err, found) {
+	}, { "id": String, "height": Number }, function (err, found) {
 		if (!err && found.length) {
 			console.log("Blocks#rollbackUntilBlock", found);
 			self.deleteBlocksBefore(found[0], cb);
@@ -208,83 +216,40 @@ private.rollbackUntilBlock = function (block, cb) {
 	});
 }
 
-private.processBlock = function (block, cb, scope) {
+private.processBlock = async function (block, options) {
+	//library.logger('processBlock block', block)
+	//library.logger('processBlock options', options)
+	console.log('--------enter processBlock')
 	try {
 		var blockBytes = modules.logic.block.getBytes(block);
 		block.id = modules.api.crypto.getId(blockBytes);
-	} catch (e) {
-		return cb(e.toString())
-	}
 
-	modules.logic.block.normalize(block, function (err) {
-		if (err) {
-			return cb(err);
+		modules.logic.block.normalize(block)
+		await private.verify(block)
+		for (let i in block.transactions) {
+			modules.logic.transaction.normalize(block.transactions[i])
 		}
-
-		private.verify(block, function (err) {
-			if (err) {
-				return cb(err);
-			}
-
-			self.applyBlock(block, function (err) {
-				if (err) {
-					return cb(err);
-				}
-				!scope && modules.api.transport.message("block", block, function () {
-
-				});
-
-				self.saveBlock(block, function (err) {
-					if (err) {
-						library.logger(err.toString());
-						process.exit(0);
-					}
-					cb();
-				}, scope);
-
-			}, scope);
-		}, scope);
-	});
+	} catch (e) {
+		library.logger('Failed to verify block: ' + e)
+		return
+	}
+	console.log('--------before applyBlock')
+	try {
+		if (options.local) {
+			app.sdb.rollbackBlock()
+		}
+		await self.applyBlock(block, options)
+		modules.api.transport.message('block', block)
+		self.setLastBlock(block)
+		console.log('Block applied ' + block.height + ' ' + block.id)
+	} catch (e) {
+		library.logger('Failed to apply block: ' + e)
+		return
+	}
 }
 
-private.cleanProcess = function (blockObj, cb, scope) {
-	var ids = blockObj.transactions.map(function (item) {
-		return item.id;
-	});
-
-	// Unconfirmed transactions
-	modules.blockchain.transactions.getUnconfirmedTransactionList(true, function (err, list) {
-		async.eachSeries(list, function (transaction, cb) {
-			modules.blockchain.transactions.undoUnconfirmedTransaction(transaction, cb, scope);
-		}, function (err) {
-			if (err) {
-				library.logger("Failed to undo transactions: " + err.toString());
-				cb(err);
-			} else {
-				private.processBlock(blockObj, function (err) {
-					if (err) {
-						library.logger("Failed to process block", err);
-					}
-
-					async.eachSeries(list, function (transaction, cb) {
-						if (err) {
-							modules.blockchain.transactions.applyUnconfirmedTransaction(transaction, function (err) {
-								cb();
-							}, scope);
-						} else {
-							if (ids.indexOf(transaction.id) < 0) {
-								modules.blockchain.transactions.applyUnconfirmedTransaction(transaction, function (err) {
-									cb();
-								}, scope);
-							} else {
-								setImmediate(cb);
-							}
-						}
-					}, cb);
-				}, scope);
-			}
-		});
-	}, scope);
+Blocks.prototype.setLastBlock = function (block) {
+	private.lasetBlock = block
 }
 
 Blocks.prototype.applyBatchBlock = function (blocks, cb) {
@@ -343,19 +308,24 @@ Blocks.prototype.saveBatchBlock = function (blocks, cb) {
 	});
 }
 
-Blocks.prototype.saveBlock = function (block, cb, scope) {
-	if (scope) {
-		return setImmediate(cb)
-	}
-	modules.logic.block.save(block, function (err) {
-		if (err) {
-			return cb(err);
+Blocks.prototype.saveBlock = function (block) {
+	for (let i in block.transactions) {
+		let trs = block.transactions[i]
+		trs.height = block.height
+
+		// TODO encode array
+		if (trs.args) {
+			trs.args = trs.args.join('|')
 		}
-		async.eachSeries(block.transactions, function (trs, cb) {
-			trs.blockId = block.id;
-			modules.logic.transaction.save(trs, cb);
-		}, cb);
-	});
+		app.sdb.create('Transaction', trs)
+	}
+	let blockObj = {}
+	for (let k in block) {
+		if (k !== 'transactions') {
+			blockObj[k] = block[k]
+		}
+	}
+	app.sdb.create('Block', blockObj)
 }
 
 Blocks.prototype.readDbRows = function (rows) {
@@ -413,7 +383,7 @@ Blocks.prototype.simpleDeleteAfterBlock = function (height, cb) {
 	modules.api.sql.remove({
 		table: "blocks",
 		condition: {
-			height: {$gte: height}
+			height: { $gte: height }
 		}
 	}, cb);
 }
@@ -422,196 +392,98 @@ Blocks.prototype.genesisBlock = function () {
 	return private.genesisBlock;
 }
 
-Blocks.prototype.createBlock = function (executor, timestamp, point, cb, scope) {
-	modules.blockchain.transactions.getUnconfirmedTransactionList(false, function (err, unconfirmedList) {
-		var ready = [];
+Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
+	let unconfirmedList = modules.blockchain.transactions.getUnconfirmedTransactionList()
+	let payloadHash = crypto.createHash('sha256')
+	let payloadLength = 0
+	for (let i in unconfirmedList) {
+		let transaction = unconfirmedList[i]
+		let bytes = modules.logic.transaction.getBytes(transaction)
+		if ((payloadLength + bytes.length) > 8 * 1024 * 1024) {
+			throw new Error('Playload length outof range')
+		}
+		payloadHash.update(bytes)
+		payloadLength += bytes.length
+	}
+	var block = {
+		delegate: executor.keypair.publicKey.toString("hex"),
+		height: private.lastBlock.height + 1,
+		prevBlockId: private.lastBlock.id,
+		pointId: point.id,
+		timestamp: timestamp,
+		pointHeight: point.height,
+		count: ready.length,
+		transactions: unconfirmedList,
+		payloadHash: payloadHash.digest().toString("hex"),
+		payloadLength: payloadLength
+	}
 
-		var payloadHash = crypto.createHash("sha256"),
-			payloadLength = 0;
+	let blockBytes = modules.logic.block.getBytes(block)
 
-		async.eachSeries(unconfirmedList, function (transaction, cb) {
-			modules.blockchain.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (err, sender) {
-				if (err) {
-					return cb("Sender not found");
-				}
-				async.series([
-					function (cb) {
-						modules.logic.transaction.verify(transaction, sender, cb, scope);
-					},
-					function (cb) {
-						modules.logic.transaction.ready(transaction, sender, cb, scope);
-					},
-					function (cb) {
-						var bytes = modules.logic.transaction.getBytes(transaction);
+	block.id = modules.api.crypto.getId(blockBytes)
+	block.signature = modules.api.crypto.sign(executor.keypair, blockBytes)
 
-						if ((payloadLength + bytes.length) > 1024 * 1024) {
-							return setImmediate(cb);
-						}
-
-						payloadHash.update(bytes);
-						payloadLength += bytes.length;
-
-						ready.push(transaction);
-						cb();
-					},
-				], function (err) {
-					if (err) {
-						library.logger(err);
-					}
-
-					cb();
-				})
-			}, scope);
-		}, function () {
-			var blockObj = {
-				delegate: executor.keypair.publicKey.toString("hex"),
-				height: private.lastBlock.height + 1,
-				prevBlockId: private.lastBlock.id,
-				pointId: point.id,
-				timestamp: timestamp,
-				pointHeight: point.height,
-				count: ready.length,
-				transactions: ready,
-				payloadHash: payloadHash.digest().toString("hex"),
-				payloadLength: payloadLength
-			};
-
-			var blockBytes = modules.logic.block.getBytes(blockObj);
-
-			blockObj.id = modules.api.crypto.getId(blockBytes);
-			blockObj.signature = modules.api.crypto.sign(executor.keypair, blockBytes);
-
-			private.cleanProcess(blockObj, cb);
-		});
-	}, scope);
+	await private.processBlock(block, { save: true, local: true })
 }
 
-Blocks.prototype.applyBlock = function (block, cb, scope) {
-	var payloadHash = crypto.createHash("sha256"),
-		appliedTransactions = {},
-		fee = 0,
-		payloadLength = 0;
+Blocks.prototype.applyBlock = async function (block, options) {
+	console.log('enter applyblock')
+	let appliedTransactions = {}
+	let fee = 0
 
-	async.eachSeries(block.transactions, function (transaction, cb) {
-		modules.logic.transaction.normalize(transaction, function (err) {
-			if (err) {
-				return cb(err);
-			}
-
-			var trsBytes = modules.logic.transaction.getBytes(transaction);
-			transaction.id = modules.api.crypto.getId(trsBytes);
-			transaction.blockId = block.id;
+	try {
+		app.sdb.beginBlock()
+		for (let i in block.transactions) {
+			let transaction = block.transactions[i]
+			transaction.senderId = modules.blockchain.accounts.generateAddressByPublicKey(transaction.senderPublicKey)
 
 			if (appliedTransactions[transaction.id]) {
-				return setImmediate(cb, "Duplicate transaction in block: " + transaction.id);
+				throw new Error("Duplicate transaction in block: " + transaction.id)
 			}
 
-			modules.blockchain.transactions.applyUnconfirmedTransaction(transaction, function (err) {
-				if (err) {
-					return setImmediate(cb, "Failed to apply transaction: " + transaction.id);
-				}
+			let [mod, func] = transaction.func.split('.')
+			if (!mod || !func) {
+				throw new Error('Invalid transaction function')
+			}
+			let fn = app.contract[mod][func]
+			if (!fn) {
+				throw new Error('Contract not found')
+			}
+			let bind = {
+				trs: transaction,
+				block: block
+			}
 
-				try {
-					var bytes = modules.logic.transaction.getBytes(transaction);
-				} catch (e) {
-					return setImmediate(cb, e.toString());
-				}
+			app.sdb.beginTransaction()
+			let error = await fn.apply(bind, transaction.args)
+			if (error) {
+				throw new Error('Failed to apply transaction: ' + error)
+			}
 
-				payloadHash.update(bytes);
-				payloadLength += bytes.length;
-				appliedTransactions[transaction.id] = transaction;
-				fee += transaction.fee;
-
-				modules.blockchain.transactions.removeUnconfirmedTransaction(transaction.id, cb, scope);
-			}, scope);
-		});
-	}, function (err) {
-		if (err) {
-			return cb(err);
+			app.sdb.commitTransaction()
+			// TODO not just remove, should mark as applied
+			modules.blockchain.transactions.removeUnconfirmedTransaction(transaction.id)
+			appliedTransactions[transaction.id] = transaction;
+			fee += transaction.fee;
 		}
 
-		payloadHash = payloadHash.digest();
+		// TODO process fee
 
-		if (payloadLength != block.payloadLength) {
-			err = "Invalid payload length";
+		if (options.save) {
+			self.saveBlock(block)
 		}
 
-		if (payloadHash.toString("hex") != block.payloadHash) {
-			err = "Invalid payload hash";
-		}
-
-		if (err) {
-			async.eachSeries(block.transactions, function (transaction, cb) {
-				if (appliedTransactions[transaction.id]) {
-					modules.blockchain.transactions.undoUnconfirmedTransaction(transaction, cb, scope);
-				} else {
-					setImmediate(cb);
-				}
-			}, function (undoErr) {
-				if (undoErr) {
-					library.logger(undoErr.toString());
-					process.exit(0);
-				}
-				cb(err);
-			});
-		} else {
-			appliedTransactions = {};
-			async.eachSeries(block.transactions, function (transaction, cb) {
-				modules.blockchain.transactions.applyTransaction(transaction, function (err) {
-					if (err) {
-						library.logger("Failed to apply transactions: " + transaction.id);
-						return setImmediate(cb, err);
-					}
-
-					modules.blockchain.transactions.removeUnconfirmedTransaction(transaction.id, function () {
-						appliedTransactions[transaction.id] = true;
-						setImmediate(cb);
-					}, scope);
-				}, scope);
-			}, function (err) {
-				if (err) {
-					async.eachSeries(block.transactions, function (transaction, cb) {
-						if (appliedTransactions[transaction.id]) {
-							modules.blockchain.transactions.undoTransaction(transaction, function (err) {
-								if (err) {
-									library.logger(err.toString());
-									process.exit(0);
-								} else {
-									modules.blockchain.transactions.undoUnconfirmedTransaction(transaction, cb, scope);
-								}
-							}, scope);
-						} else {
-							modules.blockchain.transactions.undoUnconfirmedTransaction(transaction, cb, scope);
-						}
-					}, function (undoErr) {
-						if (undoErr) {
-							library.logger(undoErr.toString());
-							process.exit(0);
-						} else {
-							cb(err);
-						}
-					});
-				} else {
-					// Merge account and add fees
-					modules.blockchain.accounts.mergeAccountAndGet({
-						publicKey: block.delegate,
-						balance: {"XAS": fee},
-						u_balance: {"XAS": fee}
-					}, function (err) {
-						if (!err) {
-							(scope || private).lastBlock = block;
-						}
-						cb(err);
-					}, scope);
-				}
-			});
-		}
-	});
+		await app.sdb.commitBlock()
+	} catch (e) {
+		library.logger('apply block error: ' + e)
+		app.sdb.rollbackBlock()
+		throw new Error('Failed to apply block: ' + e)
+	}
 }
 
 Blocks.prototype.loadBlocksPeer = function (peer, cb, scope) {
 	console.log("Load blocks after:", scope.lastBlock.height)
-	modules.api.transport.getPeer(peer, "get", "/blocks/after", {lastBlockHeight: scope.lastBlock.height}, function (err, res) {
+	modules.api.transport.getPeer(peer, "get", "/blocks/after", { lastBlockHeight: scope.lastBlock.height }, function (err, res) {
 		if (err || !res.body || !res.body.success) {
 			return cb(err);
 		}
@@ -627,27 +499,28 @@ Blocks.prototype.loadBlocksPeer = function (peer, cb, scope) {
 }
 
 Blocks.prototype.loadBlocksOffset = function (limit, offset, cb) {
-	self.getBlocks(function (err, blocks) {
-		if (err) {
-			return cb(err);
-		}
+	console.log('loadBlocksOffset !!!!!!!!!!')
+	// self.getBlocks(function (err, blocks) {
+	// 	if (err) {
+	// 		return cb(err);
+	// 	}
 
-		blocks = self.readDbRows(blocks);
+	// 	blocks = self.readDbRows(blocks);
 
-		async.eachSeries(blocks, function (block, cb) {
-			// private.verify(block, function (err) {
-			// if (err) {
-			// 	return cb({message: err, block: block});
-			// }
-			self.applyBlock(block, function (err) {
-				if (err) {
-					return cb({block: block, message: err})
-				}
-				cb();
-			});
-			// });
-		}, cb);
-	}, {limit: limit, offset: offset})
+	// 	async.eachSeries(blocks, function (block, cb) {
+	// 		// private.verify(block, function (err) {
+	// 		// if (err) {
+	// 		// 	return cb({message: err, block: block});
+	// 		// }
+	// 		self.applyBlock(block, function (err) {
+	// 			if (err) {
+	// 				return cb({ block: block, message: err })
+	// 			}
+	// 			cb();
+	// 		});
+	// 		// });
+	// 	}, cb);
+	// }, { limit: limit, offset: offset })
 }
 
 Blocks.prototype.findCommon = function (cb, query) {
@@ -657,13 +530,13 @@ Blocks.prototype.findCommon = function (cb, query) {
 			id: {
 				$in: query.ids
 			},
-			height: {$between: [query.min, query.max]}
+			height: { $between: [query.min, query.max] }
 		},
 		sort: {
 			height: 1
 		},
-		fields: [{expression: "max(height)", alias: "height"}, "id", "prevBlockId"]
-	}, {"height": Number, "id": String, "prevBlockId": String}, function (err, rows) {
+		fields: [{ expression: "max(height)", alias: "height" }, "id", "prevBlockId"]
+	}, { "height": Number, "id": String, "prevBlockId": String }, function (err, rows) {
 		if (err) {
 			return cb(err);
 		}
@@ -713,8 +586,8 @@ Blocks.prototype.getCommonBlock = function (height, peer, cb) {
 					modules.api.sql.select({
 						table: "blocks",
 						condition: condition,
-						fields: [{expression: "count(id)", alias: "count"}]
-					}, {"count": Number}, function (err, rows) {
+						fields: [{ expression: "count(id)", alias: "count" }]
+					}, { "count": Number }, function (err, rows) {
 						if (err || !rows.length) {
 							return next(err || "Block comparision failed");
 						}
@@ -740,7 +613,7 @@ Blocks.prototype.count = function (cb) {
 			expression: "count(*)",
 			alias: "count"
 		}]
-	}, {count: Number}, function (err, rows) {
+	}, { count: Number }, function (err, rows) {
 		if (err) {
 			return cb(err);
 		}
@@ -758,7 +631,7 @@ Blocks.prototype.getLastBlock = function () {
 
 Blocks.prototype.getBlock = function (cb, query) {
 	modules.api.sql.select(extend({}, library.scheme.selector["blocks"], {
-		condition: {"b.id": query.id},
+		condition: { "b.id": query.id },
 		fields: library.scheme.aliasedFields
 	}), library.scheme.types, cb);
 }
@@ -778,7 +651,7 @@ Blocks.prototype.getBlocksAfter = function (cb, query) {
 	modules.api.sql.select(extend({}, library.scheme.selector["blocks"], {
 		limit: 1000,
 		condition: {
-			"b.height": {$gt: query.lastBlockHeight}
+			"b.height": { $gt: query.lastBlockHeight }
 		},
 		fields: library.scheme.aliasedFields,
 		sort: {
@@ -790,18 +663,18 @@ Blocks.prototype.getBlocksAfter = function (cb, query) {
 Blocks.prototype.onMessage = function (query) {
 	if (query.topic == "block" && private.loaded) {
 		library.sequence.add(function (cb) {
-			var block = query.message;
+			var block = query.message
 			// console.log("check", block.prevBlockId + " == " + private.lastBlock.id, block.id + " != " + private.lastBlock.id)
 			if (block.prevBlockId == private.lastBlock.id && block.id != private.lastBlock.id && block.id != private.genesisBlock.id) {
-				private.cleanProcess(block, function (err) {
-					if (err) {
-						library.logger("Blocks#cleanProcess error", err);
+				(async () => {
+					try {
+						await private.processBlock(block, { save: true, local: false })
+					} catch (e) {
+						library.logger("Blocks#processBlock error", e)
 					}
-					cb(err);
-				})
-			} else {
-				cb();
+				})()
 			}
+			cb()
 		});
 	}
 
@@ -830,30 +703,24 @@ Blocks.prototype.onBlockchainLoaded = function () {
 Blocks.prototype.onBind = function (_modules) {
 	modules = _modules;
 
-	modules.api.sql.select({
-		table: "blocks",
-		condition: {
-			id: private.genesisBlock.id
-		},
-		fields: ["id"]
-	}, function (err, found) {
-		if (err) {
-			library.logger("Failed to get genesis block", err)
-			process.exit(0);
-		}
-		if (!found.length) {
-			self.saveBlock(private.genesisBlock, function (err) {
-				if (err) {
-					library.logger("Failed to save genesis block", err.toString());
-					process.exit(0);
-				} else {
-					library.bus.message("blockchainReady");
+	(async () => {
+		try {
+			let count = await app.model.Block.count({ id: private.genesisBlock.id })
+			if (count === 0) {
+				await private.processBlock(private.genesisBlock, { save: true })
+			}
+			let block = await app.model.Block.findOne({
+				condition: {
+					height: count
 				}
-			});
-		} else {
-			library.bus.message("blockchainReady");
+			})
+			self.setLastBlock(block)
+			library.bus.message('blockchainLoaded')
+		} catch (e) {
+			library.logger('Failed to prepare local blockchain', e)
+			process.exit(0)
 		}
-	});
+	})()
 }
 
 module.exports = Blocks;

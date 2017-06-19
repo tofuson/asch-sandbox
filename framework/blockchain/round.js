@@ -42,19 +42,20 @@ private.loop = function (point, cb) {
 
 		library.sequence.add(function (cb) {
 			if (slots.getSlotNumber(currentBlockData) == slots.getSlotNumber()) {
-				modules.blockchain.blocks.createBlock(executor, currentBlockData, point, cb);
+				(async function () {
+					try {
+						await odules.blockchain.blocks.createBlock(executor, currentBlockData, point)
+						var lastBlock = modules.blockchain.blocks.getLastBlock();
+						library.logger("New dapp block id: " + lastBlock.id + " height: " + lastBlock.height + " via point: " + lastBlock.pointHeight);
+					} catch (e) {
+						library.logger('Failed to create new block: ' + e)
+					}
+				})()
+				cb()
 			} else {
-				setImmediate(cb);
+				setImmediate(cb)
 			}
-		}, function (err) {
-			if (err) {
-				library.logger("Failed to generate block", err);
-			} else {
-				var lastBlock = modules.blockchain.blocks.getLastBlock();
-				library.logger("New dapp block id: " + lastBlock.id + " height: " + lastBlock.height + " via point: " + lastBlock.pointHeight);
-			}
-			cb(err);
-		})
+		}, cb)
 	});
 }
 
@@ -88,7 +89,7 @@ Round.prototype.generateDelegateList = function (height) {
 
 	var currentSeed = crypto.createHash("sha256").update(seedSource, "utf8").digest();
 	for (var i = 0, delCount = delegates.length; i < delCount; i++) {
-		for (var x = 0; x < 4 && i < delCount; i++, x++) {
+		for (var x = 0; x < 4 && i < delCount; i++ , x++) {
 			var newIndex = currentSeed[x] % delCount;
 			var b = delegates[newIndex];
 			delegates[newIndex] = delegates[i];

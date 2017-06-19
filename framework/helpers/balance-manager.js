@@ -5,7 +5,7 @@ class BalanceManager {
     this.sdb = sdb
   }
 
-  getBalance(address, currency) {
+  get(address, currency) {
     let item = this.sdb.get('Balance', {
       address: address,
       currency: currency
@@ -14,7 +14,7 @@ class BalanceManager {
     return bignum(balance)
   }
 
-  increaseBalance(address, currency, amount) {
+  increase(address, currency, amount) {
     let cond = {
       address: address,
       currency: currency
@@ -29,8 +29,13 @@ class BalanceManager {
     }
   }
 
-  decreaseBalance(address, currency, amount) {
-    this.increaseBalance(address, currency, '-' + amount)
+  decrease(address, currency, amount) {
+    this.increase(address, currency, '-' + amount)
+  }
+  
+  transfer(currency, amount, from, to) {
+    this.decrease(from, currency, amount)
+    this.increase(to, currency, amount)
   }
 }
 

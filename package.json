@@ -9,6 +9,7 @@
   "author": "QingFeng Shan <sqf1225@foxmail.com>",
   "license": "ISC",
   "dependencies": {
+    "bignumber": "https://github.com/sqfasd/bignumber/tarball/master",
     "change-case": "3.0.0",
     "json-sql": "https://github.com/sqfasd/json-sql/tarball/master",
     "sequelize": "4.1.0",

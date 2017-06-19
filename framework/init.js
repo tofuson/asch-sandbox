@@ -202,7 +202,7 @@ module.exports = function (options, cb) {
 				}
 			})()
 
-			// scope.bus.message("bind", scope.modules);
+			scope.bus.message("bind", scope.modules);
 			cb();
 		}]
 	}, cb);

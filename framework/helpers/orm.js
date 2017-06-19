@@ -23,8 +23,14 @@ class Model {
     }
   }
 
+  fields() {
+    return this.allFields
+  }
+
   sync() {
+    //console.log('sync schema', this.schema)
     let sql = jsonSql.build(this.schema).query
+    //console.log('sync sql', sql)
     return this.db.query(sql)
   }
 

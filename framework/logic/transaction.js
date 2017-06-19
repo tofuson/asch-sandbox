@@ -21,22 +21,24 @@ Transaction.prototype.getId = function (trs) {
 
 Transaction.prototype.getBytes = function (trs, skipSignature) {
 	try {
-
-
-		var bb = new ByteBuffer()
+		var bb = new ByteBuffer(1, true)
 		bb.writeInt(trs.timestamp)
 		bb.writeString(trs.fee)
+
+		var senderPublicKeyBuffer = new Buffer(trs.senderPublicKey, 'hex');
+		for (var i = 0; i < senderPublicKeyBuffer.length; i++) {
+			bb.writeByte(senderPublicKeyBuffer[i]);
+		}
 		bb.writeString(trs.func)
 		for (let i = 0; i < trs.args.length; ++i) {
 			bb.writeString(trs.args[i])
 		}
 
-		assert(trs.senderPublicKey instanceof Buffer)
-		bb.append(Array.from(trs.senderPublicKey))
-
 		if (!skipSignature && trs.signature) {
-			assert(trs.signature instanceof Buffer)
-			bb.append(Array.from(trs.signature))
+			var signatureBuffer = new Buffer(trs.signature, 'hex');
+			for (var i = 0; i < signatureBuffer.length; i++) {
+				bb.writeByte(signatureBuffer[i]);
+			}
 		}
 
 		bb.flip()
@@ -51,8 +53,7 @@ Transaction.prototype.verifySignature = function (trs, publicKey, signature) {
 
 	try {
 		var bytes = self.getBytes(trs, true)
-		var hash = modules.api.crypto.getHash('sha256', bytes)
-		var res = modules.api.crypto.verify(publicKey, signature, hash)
+		var res = modules.api.crypto.verify(publicKey, signature, bytes)
 	} catch (e) {
 		throw Error(e.toString())
 	}
@@ -60,17 +61,7 @@ Transaction.prototype.verifySignature = function (trs, publicKey, signature) {
 	return res
 }
 
-Transaction.prototype.verify = function (trs, sender) { //inheritance
-	//check sender
-	if (!sender) {
-		throw new Error("Missing sender")
-	}
-
-	//check sender
-	if (trs.senderId != sender.address) {
-		throw new Error("Invalid sender id: " + trs.id)
-	}
-
+Transaction.prototype.verify = function (trs) { //inheritance
 	if (trs.timestamp > slots.getNow()) {
 		throw new Error("Invalid timestamp")
 	}
@@ -142,7 +133,7 @@ Transaction.prototype.normalize = function (tx) {
 		required: ["id", "timestamp", "senderPublicKey", "fee", "signature", "func", "args"]
 	})
 	if (!valid) {
-		throw new Error(library.validator.getError())
+		throw new Error(library.validator.getLastError().details[0].message)
 	}
 }
 

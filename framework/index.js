@@ -82,6 +82,7 @@ Sandbox.prototype.run = function (app) {
 		sandbox: this
 	}
 	global.app = app
+	global.PIFY = require('./helpers/index').PIFY
 	require('./init')(options, function (err) {
 		if (err) {
 			console.error('Failed to init: ' + err);

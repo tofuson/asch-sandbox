@@ -96,9 +96,6 @@ class SmartDB {
       batchs.push(sqls)
     }
 
-    this.blockLogs = new Array
-    this.lockCache.clear()
-
     if (batchs.length === 0) {
       return true
     }
@@ -111,6 +108,8 @@ class SmartDB {
         await this.app.db.query(sql)
       }
       await t.commit()
+      this.blockLogs = new Array
+      this.lockCache.clear()
     } catch (e) {
       console.log('Failed to commit block: ' + e)
       await t.rollback()

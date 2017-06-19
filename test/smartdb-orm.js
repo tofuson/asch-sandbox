@@ -69,7 +69,7 @@ describe('smartdb-orm', () => {
 
   after(async () => {
     app.db.close()
-    //fs.unlinkSync(DB_FILE)
+    fs.unlinkSync(DB_FILE)
   })
 
   it('should pass all normal tests', async () => {
@@ -155,19 +155,19 @@ describe('smartdb-orm', () => {
     sdb.beginTransaction()
 
     assert.equal(sdb.get('Balance', B1), null)
-    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '0')
-    bm.decreaseBalance(B1.address, B1.currency, '1000')
-    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '-1000')
-    bm.increaseBalance(B1.address, B1.currency, '1500')
-    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '500')
+    assert.equal(bm.get(B1.address, B1.currency).toString(), '0')
+    bm.decrease(B1.address, B1.currency, '1000')
+    assert.equal(bm.get(B1.address, B1.currency).toString(), '-1000')
+    bm.increase(B1.address, B1.currency, '1500')
+    assert.equal(bm.get(B1.address, B1.currency).toString(), '500')
 
     sdb.rollbackTransaction()
-    bm.increaseBalance(B1.address, B1.currency, '1000')
-    bm.decreaseBalance(B1.address, B1.currency, '500')
+    bm.increase(B1.address, B1.currency, '1000')
+    bm.decrease(B1.address, B1.currency, '500')
     sdb.commitTransaction()
     await sdb.commitBlock()
 
-    assert.equal(bm.getBalance(B1.address, B1.currency).toString(), '500')
+    assert.equal(bm.get(B1.address, B1.currency).toString(), '500')
 
     let obj = await app.model.Balance.findOne({ condition: B1 })
     assert.notEqual(obj, null)

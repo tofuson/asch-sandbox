@@ -46,12 +46,11 @@ module.exports = {
     },
     {
       name: 'args',
-      type: 'String'
+      type: 'Text'
     },
     {
-      name: 'blockId',
-      type: 'String',
-      length: 64,
+      name: 'height',
+      type: 'BigInt',
       not_null: true
     }
   ]

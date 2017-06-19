@@ -22,9 +22,5 @@
   "blockchain/loader": "./blockchain/loader.js",
   "system/background": "./system/background.js",
   "system/api": "./system/api.js",
-  "system/sync": "./system/sync.js",
-  "contracts/insidetransfer": "./contracts/insidetransfer.js",
-  "contracts/outsidetransfer": "./contracts/outsidetransfer.js",
-  "contracts/delegates": "./contracts/delegates.js",
-  "contracts/withdrawaltransfer": "./contracts/withdrawaltransfer.js"
+  "system/sync": "./system/sync.js"
 }

@@ -88,7 +88,7 @@ Block.prototype.save = function (block, cb) {
 	}, cb);
 }
 
-Block.prototype.normalize = function (block, cb) {
+Block.prototype.normalize = function (block) {
 	for (var i in block) {
 		if (block[i] === null || typeof block[i] == "undefined") {
 			delete block[i];
@@ -132,10 +132,10 @@ Block.prototype.normalize = function (block, cb) {
 				type: "integer"
 			}
 		},
-		required: ["id", "timestamp", "payloadLength", "payloadHash", "pointId", "pointHeight", "delegate", "signature", "count"]
+		required: ["id", "timestamp", "payloadLength", "payloadHash", "delegate", "signature", "count"]
 	});
 	if (!valid) {
-		throw new Error(library.validator.getError())
+		throw new Error(library.validator.getLastError().details[0].message)
 	}
 }
 
