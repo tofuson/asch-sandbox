@@ -86,14 +86,23 @@ private.verify = async function (block) {
 		console.log('verify block undefined');
 		return
 	}
+
 	try {
-		var valid = modules.logic.block.verifySignature(block);
+		if (!modules.logic.block.verifyId(block)) {
+			throw new Error('Invalid block id')
+		}
+	} catch (e) {
+		throw new Error('Failed to verify block id: ' + e)
+	}
+
+	try {
+		if (!modules.logic.block.verifySignature(block)) {
+			throw new Error('Invalid block signature')
+		}
 	} catch (e) {
 		throw new Error('Failed to verify signature: ' + e)
 	}
-	if (!valid) {
-		throw new Error('Invalid block signature')
-	}
+
 	if (block.delegates) {
 		throw new Error("Invalid delegates in block");
 	}
@@ -151,7 +160,7 @@ private.verify = async function (block) {
 	} catch (e) {
 		throw new Error('Failed to verify transaction: ' + e)
 	}
-	
+
 	payloadHash = payloadHash.digest()
 
 	if (payloadLength != block.payloadLength) {
@@ -219,11 +228,8 @@ private.rollbackUntilBlock = function (block, cb) {
 private.processBlock = async function (block, options) {
 	//library.logger('processBlock block', block)
 	//library.logger('processBlock options', options)
-	console.log('--------enter processBlock')
+	console.log('--------enter processBlock', block.id, block.height)
 	try {
-		var blockBytes = modules.logic.block.getBytes(block);
-		block.id = modules.api.crypto.getId(blockBytes);
-
 		modules.logic.block.normalize(block)
 		await private.verify(block)
 		for (let i in block.transactions) {
@@ -419,9 +425,9 @@ Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
 	}
 
 	let blockBytes = modules.logic.block.getBytes(block)
-
-	block.id = modules.api.crypto.getId(blockBytes)
 	block.signature = modules.api.crypto.sign(executor.keypair, blockBytes)
+	blockBytes = modules.logic.block.getBytes(block)
+	block.id = modules.api.crypto.getId(blockBytes)
 
 	await private.processBlock(block, { save: true, local: true })
 }
@@ -706,6 +712,7 @@ Blocks.prototype.onBind = function (_modules) {
 	(async () => {
 		try {
 			let count = await app.model.Block.count({ id: private.genesisBlock.id })
+			console.log('Genesis block found:', count)
 			if (count === 0) {
 				await private.processBlock(private.genesisBlock, { save: true })
 			}

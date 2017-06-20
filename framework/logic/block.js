@@ -14,14 +14,8 @@ function Block(cb, _library) {
 }
 
 //public methods
-Block.prototype.getBytes = function (block, withSignature) {
-	var size = 8 + 4 + 4 + 4 + 32 + 32 + 8 + 4 + 4;
-
-	if (withSignature && block.signature) {
-		size = size + 64;
-	}
-
-	var bb = new ByteBuffer(size, true);
+Block.prototype.getBytes = function (block, skipSignature) {
+	var bb = new ByteBuffer(1, true);
 
 	bb.writeString(block.prevBlockId || '0')
 	bb.writeLong(block.height);
@@ -44,7 +38,7 @@ Block.prototype.getBytes = function (block, withSignature) {
 
 	bb.writeInt(block.count);
 
-	if (withSignature && block.signature) {
+	if (!skipSignature && block.signature) {
 		var pb = new Buffer(block.signature, "hex");
 		for (var i = 0; i < pb.length; i++) {
 			bb.writeByte(pb[i]);
@@ -57,11 +51,13 @@ Block.prototype.getBytes = function (block, withSignature) {
 	return b;
 }
 
+Block.prototype.verifyId = function (block) {
+	var bytes = self.getBytes(block)
+	return block.id === modules.api.crypto.getId(bytes)
+}
+
 Block.prototype.verifySignature = function (block) {
-	var blockBytes = self.getBytes(block);
-	if (block.id != modules.api.crypto.getId(blockBytes)) {
-		return false;
-	}
+	var blockBytes = self.getBytes(block, true);
 	if (!modules.api.crypto.verify(block.delegate, block.signature, blockBytes)) {
 		return false;
 	}
