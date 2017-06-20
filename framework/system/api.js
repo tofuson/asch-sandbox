@@ -30,9 +30,10 @@ Api.prototype.onBlockchainLoaded = function () {
 	private.loaded = true;
 
 	try {
-		var router = require("../../routes.json");
+		var router = require("../routes.json");
 	} catch (e) {
 		library.logger("Failed to load routes.json");
+		process.exit(4)
 	}
 
 	router.forEach(function (route) {
@@ -54,7 +55,12 @@ Api.prototype.onBlockchainLoaded = function () {
 		}
 	});
 
-	modules.api.dapps.setReady(function () {
+	modules.api.dapps.setReady(function (err) {
+		if (err) {
+			console.log('app set ready success')
+		} else {
+			console.log('app set ready failed: ' + err)
+		}
 	});
 }
 

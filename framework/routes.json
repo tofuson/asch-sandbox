@@ -58,15 +58,5 @@
 		"path": "/blocks/count",
 		"method": "get",
 		"handler": "blockchain.blocks.count"
-	},
-  	{
-		"path": "/withdrawal",
-		"method": "post",
-		"handler": "contracts.withdrawaltransfer.withdrawal"
-	},
-	{
-		"path": "/delegates",
-		"method": "put",
-		"handler": "blockchain.delegates.addDelegates"
 	}
 ]
