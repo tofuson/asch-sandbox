@@ -8,7 +8,7 @@ function deconstruct(obj) {
     result = [k, obj[k]]
     if (++i > 1) throw new Error('Multi k-v deconstruct not supported')
   }
-  if (!result) throw new Error('Empty condition no supported')
+  if (!result) throw new Error('Empty condition not supported')
   return result
 }
 
@@ -18,7 +18,7 @@ function fromMapToToken(obj) {
   for (let k in obj) {
     result.push(k + '@' + obj[k])
   }
-  if (!result) throw new Error('Empty condition no supported')
+  if (!result) throw new Error('Empty condition not supported')
   return result.join('.')
 }
 
