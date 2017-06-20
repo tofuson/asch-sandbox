@@ -111,7 +111,6 @@ class SmartDB {
       this.blockLogs = new Array
       this.lockCache.clear()
     } catch (e) {
-      console.log('Failed to commit block: ' + e)
       await t.rollback()
       throw new Error('Failed to commit block: ' + e)
     }
