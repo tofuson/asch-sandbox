@@ -106,7 +106,7 @@ Accounts.prototype.clone = function (cb) {
 }
 
 Accounts.prototype.getExecutor = function (cb) {
-	var secret = process.argv[0];
+	var secret = app.secret;
 	if (!secret) {
 		return setImmediate(cb, "Secret is null");
 	}
@@ -114,16 +114,13 @@ Accounts.prototype.getExecutor = function (cb) {
 		return setImmediate(cb, null, private.executor);
 	}
 	var keypair = modules.api.crypto.keypair(secret);
-	modules.api.dapps.getGenesis(function (err, res) {
-		var address = self.generateAddressByPublicKey(keypair.publicKey.toString("hex"));
-		private.executor = {
-			address: address,
-			keypair: keypair,
-			secret: secret,
-			isAuthor: res.authorId == address
-		}
-		cb(err, private.executor);
-	});
+	var address = self.generateAddressByPublicKey(keypair.publicKey.toString("hex"));
+	private.executor = {
+		address: address,
+		keypair: keypair,
+		secret: secret
+	}
+	cb(null, private.executor);
 }
 
 Accounts.prototype.generateAddressByPublicKey = function (publicKey) {
@@ -183,7 +180,7 @@ Accounts.prototype.mergeAccountAndGet = function (data, cb, scope) {
 	var account = private.getAccount(address, scope);
 
 	if (!account) {
-		var raw = {address: address};
+		var raw = { address: address };
 		if (data.publicKey) {
 			raw.publicKey = data.publicKey;
 		}
@@ -218,7 +215,7 @@ Accounts.prototype.undoMerging = function (data, cb, scope) {
 	var account = private.getAccount(address, scope);
 
 	if (!account) {
-		var raw = {address: address};
+		var raw = { address: address };
 		if (data.publicKey) {
 			raw.publicKey = data.publicKey;
 		}
@@ -263,7 +260,7 @@ Accounts.prototype.open = function (cb, query) {
 		account.publicKey = keypair.publicKey.toString("hex");
 	}
 
-	cb(null, {account: account});
+	cb(null, { account: account });
 }
 
 Accounts.prototype.open2 = function (cb, query) {
@@ -292,7 +289,7 @@ Accounts.prototype.open2 = function (cb, query) {
 		account.publicKey = query.publicKey;
 	}
 
-	cb(null, {account: account});
+	cb(null, { account: account });
 }
 
 module.exports = Accounts;

@@ -57,6 +57,7 @@ Transactions.prototype.getUnconfirmedTransactionList = function (reverse) {
 	private.unconfirmedContracts.forEach(function (v) {
 		reverse ? a.unshift(v.transaction) : a.push(v.transaction)
 	})
+	return a
 }
 
 Transactions.prototype.removeUnconfirmedTransaction = function (id) {

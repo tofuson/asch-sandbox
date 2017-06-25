@@ -119,6 +119,13 @@ Dapps.prototype.getBalanceTransactions = function (lastTransactionId, cb) {
 	library.sandbox.sendMessage(message, cb);
 }
 
+Dapps.prototype.getDApp = function (cb) {
+	var message = {
+		call: "dapps#getDApp"
+	};
+	library.sandbox.sendMessage(message, cb);
+}
+
 Dapps.prototype.onBind = function (_modules) {
 	modules = _modules;
 }

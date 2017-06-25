@@ -57,9 +57,9 @@ Api.prototype.onBlockchainLoaded = function () {
 
 	modules.api.dapps.setReady(function (err) {
 		if (err) {
-			console.log('app set ready success')
-		} else {
 			console.log('app set ready failed: ' + err)
+		} else {
+			console.log('app set ready success')
 		}
 	});
 }

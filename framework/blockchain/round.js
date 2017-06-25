@@ -4,8 +4,8 @@ var slots = require("../helpers/slots.js");
 
 var private = {}, self = null,
 	library = null, modules = null;
-private.delegates = [];
 private.loaded = false;
+private.delegates = [];
 
 function Round(cb, _library) {
 	self = this;
@@ -44,7 +44,7 @@ private.loop = function (point, cb) {
 			if (slots.getSlotNumber(currentBlockData) == slots.getSlotNumber()) {
 				(async function () {
 					try {
-						await odules.blockchain.blocks.createBlock(executor, currentBlockData, point)
+						await modules.blockchain.blocks.createBlock(executor, currentBlockData, point)
 						var lastBlock = modules.blockchain.blocks.getLastBlock();
 						library.logger("New dapp block id: " + lastBlock.id + " height: " + lastBlock.height + " via point: " + lastBlock.pointHeight);
 					} catch (e) {
@@ -69,7 +69,6 @@ private.getState = function (executor, height) {
 		var delegate_pos = currentSlot % delegates.length;
 
 		var delegate_id = delegates[delegate_pos];
-
 		if (delegate_id && executor.address == delegate_id) {
 			return slots.getSlotTime(currentSlot);
 		}
@@ -107,15 +106,13 @@ Round.prototype.onBind = function (_modules) {
 
 Round.prototype.onBlockchainLoaded = function () {
 	private.loaded = true;
-}
 
-Round.prototype.onDelegates = function (delegates) {
 	private.delegates = [];
-	for (var i = 0; i < delegates.length; i++) {
-		private.delegates.push(modules.blockchain.accounts.generateAddressByPublicKey(delegates[i]));
+	for (var i = 0; i < app.meta.delegates.length; i++) {
+		private.delegates.push(modules.blockchain.accounts.generateAddressByPublicKey(app.meta.delegates[i]));
 		private.delegates.sort();
 	}
-	slots.delegates = private.delegates.length;
+	slots.setDelegatesNumber(app.meta.delegates.length)
 }
 
 Round.prototype.onMessage = function (query) {

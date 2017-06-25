@@ -69,5 +69,9 @@ module.exports = {
 
 	round: function (height) {
 		return Math.floor(height / this.delegates) + (height % this.delegates > 0 ? 1 : 0);
+	},
+
+	setDelegatesNumber: function (n) {
+		this.delegates = n
 	}
 }

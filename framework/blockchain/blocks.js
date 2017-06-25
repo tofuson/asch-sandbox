@@ -247,7 +247,6 @@ private.processBlock = async function (block, options) {
 		await self.applyBlock(block, options)
 		modules.api.transport.message('block', block)
 		self.setLastBlock(block)
-		console.log('Block applied ' + block.height + ' ' + block.id)
 	} catch (e) {
 		library.logger('Failed to apply block: ' + e)
 		return
@@ -255,7 +254,8 @@ private.processBlock = async function (block, options) {
 }
 
 Blocks.prototype.setLastBlock = function (block) {
-	private.lasetBlock = block
+	// console.log('Blocks#setLastBlock', block)
+	private.lastBlock = block
 }
 
 Blocks.prototype.applyBatchBlock = function (blocks, cb) {
@@ -315,6 +315,7 @@ Blocks.prototype.saveBatchBlock = function (blocks, cb) {
 }
 
 Blocks.prototype.saveBlock = function (block) {
+	// console.log('Blocks#save height', block.height)
 	for (let i in block.transactions) {
 		let trs = block.transactions[i]
 		trs.height = block.height
@@ -418,7 +419,7 @@ Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
 		pointId: point.id,
 		timestamp: timestamp,
 		pointHeight: point.height,
-		count: ready.length,
+		count: unconfirmedList.length,
 		transactions: unconfirmedList,
 		payloadHash: payloadHash.digest().toString("hex"),
 		payloadLength: payloadLength
@@ -711,17 +712,20 @@ Blocks.prototype.onBind = function (_modules) {
 
 	(async () => {
 		try {
-			let count = await app.model.Block.count({ id: private.genesisBlock.id })
-			console.log('Genesis block found:', count)
+			let count = await app.model.Block.count()
+			console.log('Blocks found:', count)
 			if (count === 0) {
 				await private.processBlock(private.genesisBlock, { save: true })
+			} else {
+				let block = await app.model.Block.findOne({
+					condition: {
+						height: count
+					}
+				})
+				self.setLastBlock(block)
 			}
-			let block = await app.model.Block.findOne({
-				condition: {
-					height: count
-				}
-			})
-			self.setLastBlock(block)
+			app.meta = await PIFY(modules.api.dapps.getDApp)()
+			// console.log('app.meta', app.meta)
 			library.bus.message('blockchainLoaded')
 		} catch (e) {
 			library.logger('Failed to prepare local blockchain', e)

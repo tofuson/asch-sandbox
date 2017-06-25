@@ -11,6 +11,7 @@ var BalanceManager = require('./framework/helpers/balance-manager')
 var rootDir = path.join(__dirname, 'framework')
 var entryFile = path.join(rootDir, 'index.js')
 var dappRootDir = path.join(process.cwd(), path.dirname(process.argv[2]))
+var secret = process.argv[3]
 
 function runDapp(app) {
     var vm = new NodeVM({
@@ -107,7 +108,8 @@ async function main() {
         balances: null,
         model: {},
         contract: {},
-        rootDir: dappRootDir
+        rootDir: dappRootDir,
+        secret: secret
     }
     app.db = new ORM('', '', '', {
         dialect: 'sqlite',

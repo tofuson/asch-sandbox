@@ -29,7 +29,7 @@ Transport.prototype.message = function (topic, message, cb) {
 			topic: topic
 		}
 	};
-
+	if (!cb) cb = function () { }
 	library.sandbox.sendMessage(message, cb);
 }
 
