@@ -28,108 +28,60 @@ private.createSandbox = function (commonBlock, cb) {
 }
 
 private.findUpdate = function (lastBlock, peer, cb) {
-	var self = this;
-
-	modules.blockchain.blocks.getCommonBlock(lastBlock.height, peer, function (err, commonBlock) {
-		commonBlock = commonBlock.body
-		if (err || !commonBlock) {
-			return cb(err);
-		}
-
-		modules.blockchain.blocks.getBlock(function (err, block) {
-			if (err) {
-				return cb(err);
+	(async () => {
+		try {
+			let commonBlock = await modules.blockchain.blocks.getCommonBlock(lastBlock.height, peer)
+			console.log('Get common block', commonBlock.height, commonBlock.id)
+			if (commonBlock.height !== lastBlock.height) {
+				return cb('Reject fork chain')
 			}
 
-			block = modules.blockchain.blocks.readDbRows(block);
-
-			private.createSandbox(block[0], function (err, sandbox) {
-				if (err) {
-					return cb(err);
+			let blocks = await PIFY(modules.blockchain.blocks.loadBlocksPeer)(commonBlock.height, peer)
+			console.log('Loading ' + blocks.length + ' blocks')
+			for (let i in blocks) {
+				let b = blocks[i]
+				if (b.height > lastBlock.height) {
+					await modules.blockchain.blocks.processBlock(b, {})
 				}
-				modules.blockchain.blocks.loadBlocksPeer(peer, function (err, blocks) {
-					if (err) {
-						return cb(err);
-					}
-
-					async.series([
-						function (cb) {
-							if (commonBlock.height == modules.blockchain.blocks.getLastBlock().height) {
-								return cb()
-							}
-							console.log("deleteBlocksBefore", commonBlock.height)
-							modules.blockchain.blocks.deleteBlocksBefore(commonBlock, cb);
-						},
-						function (cb) {
-							console.log("Applying and saving blocks", blocks.map(function (block) {
-								return block.height
-							}).join(","))
-							async.series([
-								function (cb) {
-									modules.blockchain.blocks.applyBatchBlock(blocks, cb);
-								},
-								function (cb) {
-									modules.blockchain.blocks.saveBatchBlock(blocks, function (err) {
-										if (err) {
-											library.logger(err);
-											process.exit(0);
-										}
-										cb();
-									});
-								}], cb);
-						}
-					], function (err) {
-						if (!err) {
-							return cb();
-						}
-						library.logger("sync", err);
-						// TODO: Rollback after last error block
-						modules.blockchain.blocks.deleteBlocksBefore(commonBlock, cb);
-					});
-				}, sandbox);
-			});
-		}, {id: commonBlock.id});
-	});
+			}
+			console.log('Sync blocks completed')
+			return cb()
+		} catch (e) {
+			return cb('Failed to sync blocks: ' + e)
+		}
+	})()
 }
 
-private.transactionsSync = function (cb) {
+private.transactionsSync = function transactionsSync(cb) {
 	modules.api.transport.getRandomPeer("get", "/transactions", null, function (err, res) {
 		if (err || !res.body || !res.body.success) {
-			return cb(err);
+			return cb(err || res.body.error);
 		}
-		async.eachSeries(res.body.response, function (transaction, cb) {
-			modules.blockchain.transactions.processUnconfirmedTransaction(transaction, function (err) {
-				cb();
-			});
-		}, cb);
+		if (!res.body.transactions || !res.body.transactions.length) return cb()
+		modules.blockchain.transactions.receiveTransactions(res.body.transactions, cb)
 	});
 }
 
-private.blockSync = function (cb) {
+private.blockSync = function blockSync(cb) {
 	modules.api.blocks.getHeight(function (err, height) {
+		if (err) return cb('Failed to get main block height: ' + err)
+		console.log('get main block height', height)
 		var lastBlock = modules.blockchain.blocks.getLastBlock();
-
 		if (lastBlock.pointHeight == height) {
 			return cb();
 		}
 
 		modules.api.transport.getRandomPeer("get", "/blocks/height", null, function (err, res) {
-			if (!err && res.body && res.body.success) {
-				if (bignum(lastBlock.height).lt(res.body.body)) {
-					console.log("Received blocks from peer: " + res.peer.ip + ":" + res.peer.port);
-					private.findUpdate(lastBlock, res.peer, cb);
-				} else {
-					// console.log("Failed to load blocks from peer: " + res.peer.ip + ":" + res.peer.port);
-					setImmediate(cb);
-				}
-			} else {
-				setImmediate(cb);
-			}
+			if (err) return cb('Failed to get blocks height: ' + err)
+			console.log('blockSync get block height', res)
+			if (!res.body || !res.body.success) return cb('Failed to get blocks height: ' + res.body)
+			if (bignum(lastBlock.height).gte(res.body.height))  return cb()
+			private.findUpdate(lastBlock, res.peer, cb);
 		});
 	});
 }
 
-private.loadMultisignatures = function (cb) {
+private.loadMultisignatures = function loadMultisignatures(cb) {
 	modules.blockchain.accounts.getExecutor(function (err, executor) {
 		if (err) {
 			return cb(err);
@@ -166,7 +118,7 @@ private.loadMultisignatures = function (cb) {
 	});
 }
 
-private.withdrawalSync = function (cb) {
+private.withdrawalSync = function withdrawalSync(cb) {
 	modules.blockchain.accounts.getExecutor(function (err, executor) {
 		if (!err && executor.isAuthor) {
 			modules.api.dapps.getWithdrawalLastTransaction(function (err, res) {
@@ -201,13 +153,13 @@ private.withdrawalSync = function (cb) {
 								}
 							}
 						],
-						fields: [{"b.height": "height"}],
+						fields: [{ "b.height": "height" }],
 						condition: {
 							"t.type": TransactionTypes.WITHDRAWAL,
 							"t.id": res.id
 						},
 						limit: 1
-					}, {"height": Number}, function (err, res) {
+					}, { "height": Number }, function (err, res) {
 						if (err || !res.length) {
 							return cb(err);
 						}
@@ -225,15 +177,15 @@ private.withdrawalSync = function (cb) {
 									}
 								}
 							],
-							fields: [{"t.amount": "amount"}, {"t.id": "id"}, {"t.senderPublicKey": "senderPublicKey"}],
+							fields: [{ "t.amount": "amount" }, { "t.id": "id" }, { "t.senderPublicKey": "senderPublicKey" }],
 							condition: {
 								"type": TransactionTypes.WITHDRAWAL,
-								"b.height": {$gt: res[0].height}
+								"b.height": { $gt: res[0].height }
 							},
 							sort: {
 								"b.height": 1
 							}
-						}, {amount: Number, id: String, senderPublicKey: String}, function (err, transactions) {
+						}, { amount: Number, id: String, senderPublicKey: String }, function (err, transactions) {
 							if (err) {
 								return cb(err);
 							}
@@ -255,14 +207,14 @@ private.withdrawalSync = function (cb) {
 								}
 							}
 						],
-						fields: [{"t.amount": "amount"}, {"t.id": "id"}, {"t.senderPublicKey": "senderPublicKey"}],
+						fields: [{ "t.amount": "amount" }, { "t.id": "id" }, { "t.senderPublicKey": "senderPublicKey" }],
 						condition: {
 							"type": TransactionTypes.WITHDRAWAL
 						},
 						sort: {
 							"b.height": 1
 						}
-					}, {amount: Number, id: String, senderPublicKey: String}, function (err, transactions) {
+					}, { amount: Number, id: String, senderPublicKey: String }, function (err, transactions) {
 						if (err) {
 							return cb(err);
 						}
@@ -277,7 +229,7 @@ private.withdrawalSync = function (cb) {
 	});
 }
 
-private.balanceSync = function (cb) {
+private.balanceSync = function balanceSync(cb) {
 	modules.blockchain.accounts.getExecutor(function (err, executor) {
 		if (!err && executor.isAuthor) {
 			modules.api.sql.select({
@@ -300,7 +252,7 @@ private.balanceSync = function (cb) {
 						}
 					}
 				],
-				fields: [{"t_dt.src_id": "id"}],
+				fields: [{ "t_dt.src_id": "id" }],
 				condition: {
 					type: TransactionTypes.OUT_TRANSFER
 				},
@@ -308,7 +260,7 @@ private.balanceSync = function (cb) {
 					"b.height": -1
 				},
 				limit: 1
-			}, {id: String}, function (err, found) {
+			}, { id: String }, function (err, found) {
 				if (err) {
 					return cb(err);
 				}
@@ -323,12 +275,12 @@ private.balanceSync = function (cb) {
 					if (err) {
 						return cb(err);
 					}
-					modules.blockchain.accounts.setAccountAndGet({publicKey: executor.keypair.publicKey}, function (err, sender) {
+					modules.blockchain.accounts.setAccountAndGet({ publicKey: executor.keypair.publicKey }, function (err, sender) {
 						if (err) {
 							return cb(err);
 						}
 						async.eachSeries(transactions, function (transaction, cb) {
-							modules.blockchain.accounts.setAccountAndGet({publicKey: transaction.senderPublicKey}, function (err, recipient) {
+							modules.blockchain.accounts.setAccountAndGet({ publicKey: transaction.senderPublicKey }, function (err, recipient) {
 								var trs = modules.logic.transaction.create({
 									type: TransactionTypes.OUT_TRANSFER,
 									sender: sender,
@@ -375,9 +327,9 @@ Sync.prototype.onBlockchainLoaded = function () {
 	});
 
 	setImmediate(function nextBlockSync() {
+		console.log('nextBlockSync')
 		library.sequence.add(private.blockSync, function (err) {
 			err && library.logger("Sync#blockSync timer", err);
-
 			setTimeout(nextBlockSync, 10 * 1000)
 		});
 	});

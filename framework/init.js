@@ -130,6 +130,7 @@ module.exports = function (options, cb) {
 		sequence: function (cb) {
 			var Sequence = require("./helpers/sequence.js");
 			var sequence = new Sequence({
+				name: 'Main',
 				onWarning: function (current, limit) {
 					scope.logger.warn("Main queue", current)
 				}

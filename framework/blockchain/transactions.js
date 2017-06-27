@@ -1,21 +1,64 @@
 var private = {}, self = null,
 	library = null, modules = null;
-private.historyIds = new Set;
-private.unconfirmedContracts = new Map;
+
+class TransactionPool {
+	constructor() {
+		this.index = new Map
+		this.unConfirmed = new Array
+	}
+
+	add(trs) {
+		this.unConfirmed.push(trs)
+		this.index.set(trs.id, this.unConfirmed.length - 1)
+	}
+
+	remove(id) {
+		let pos = this.index.get(id)
+		delete this.index[id]
+		this.unConfirmed[pos] = null
+	}
+
+	has(id) {
+		let pos = this.index.get(id)
+		return !!pos && !!this.unConfirmed[pos]
+	}
+
+	getUnconfirmed() {
+		var a = [];
+
+		for (var i = 0; i < this.unConfirmed.length; i++) {
+			if (!!this.unConfirmed[i]) {
+				a.push(this.unConfirmed[i]);
+			}
+		}
+		return a
+	}
+
+	clear() {
+		this.index = new Map
+		this.unConfirmed = new Array
+	}
+
+	get(id) {
+		let pos = this.index.get(id)
+		return this.unConfirmed[pos]
+	}
+}
 
 function Transactions(cb, _library) {
 	self = this;
 	library = _library;
+	self.pool = new TransactionPool()
 	cb(null, self);
 }
 
 Transactions.prototype.getUnconfirmedTransaction = function (id) {
-	return private.unconfirmedContracts[id].transaction
+	return self.pool.get(id)
 }
 
-Transactions.prototype.processUnconfirmedTransactionAsync = async function (transaction, cb, scope) {
-	var bytes = modules.logic.transaction.getBytes(transaction)
-	var id = modules.api.crypto.getId(bytes)
+Transactions.prototype.processUnconfirmedTransactionAsync = async function (transaction) {
+	let bytes = modules.logic.transaction.getBytes(transaction)
+	let id = modules.api.crypto.getId(bytes)
 	if (transaction.id) {
 		if (transaction.id != id) {
 			throw new Error('Incorrect trainsaction id')
@@ -24,72 +67,112 @@ Transactions.prototype.processUnconfirmedTransactionAsync = async function (tran
 		transaction.id = id
 	}
 
-	if (private.unconfirmedContracts.has(transaction.id)) {
+	if (self.pool.has(transaction.id)) {
 		throw new Error('Transaction already processed')
 	}
 
-	var confirmedTrs = await modules.api.transactions.getTransactionAsync(transaction.id)
-	if (confirmedTrs) {
+	let valid = modules.logic.transaction.verify(transaction)
+	if (!valid) {
+		throw new Error('Invalid transaction signature')
+	}
+
+	let exists = await app.model.Transaction.exists({ id: transaction.id })
+	if (exists) {
 		throw new Error('Transaction already confirmed')
 	}
 
-	var sender = await modules.blockchain.accounts.setAccountAndGetAsync({ publicKey: transaction.senderPublicKey })
-	if (!modules.logic.transaction.verify(transaction, sender)) {
-		throw new Error('Failed to verify transaction')
+	let [mod, func] = transaction.func.split('.')
+	if (!mod || !func) {
+		throw new Error('Invalid transaction function')
+	}
+	let fn = app.contract[mod][func]
+	if (!fn) {
+		throw new Error('Contract not found')
+	}
+	let height = modules.blockchain.blocks.getLastBlock().height
+	let bind = {
+		trs: transaction,
+		block: {
+			height: height,
+			delegate: modules.blockchain.round.getCurrentDelegate(height)
+		}
 	}
 
-	var Contract = modules.contracts[transaction.func]
-	var contract = new Contract
-	contract.transaction = transaction
-	contract.sender = sender
-	await contract.verify.apply(contract, transaction.args)
-	this.addUnconfirmedContract(contract)
+	app.sdb.beginTransaction()
+	try {
+		let error = await fn.apply(bind, transaction.args)
+		if (error) {
+			throw new Error('Apply transaction error: ' + error)
+		}
+	} catch (e) {
+		app.sdb.rollbackTransaction()
+		throw new Error('Apply transaction exception: ' + e)
+	}
+
+	app.sdb.commitTransaction()
+	self.pool.add(transaction)
 	return transaction
 }
 
-Transactions.prototype.addUnconfirmedContract = function (contract) {
-	var id = contract.transaction.id
-	private.unconfirmedContracts.set(id, contract)
-}
-
-Transactions.prototype.getUnconfirmedTransactionList = function (reverse) {
-	var a = []
-	private.unconfirmedContracts.forEach(function (v) {
-		reverse ? a.unshift(v.transaction) : a.push(v.transaction)
-	})
-	return a
+Transactions.prototype.getUnconfirmedTransactionList = function () {
+	return self.pool.getUnconfirmed()
 }
 
 Transactions.prototype.removeUnconfirmedTransaction = function (id) {
-	delete private.unconfirmedContracts[id]
+	self.pool.remove(id)
 }
 
-Transactions.prototype.addTransaction = function (cb, query) {
+Transactions.prototype.clearUnconfirmed = function () {
+	self.pool.clear()
+}
+
+Transactions.prototype.addTransaction = function (query, cb) {
+	library.sequence.add(function processNewTransaction(cb) {
+		(async function () {
+			try {
+				var trs = await self.processUnconfirmedTransactionAsync(query.transaction)
+				cb(null, { transaction: trs })
+			} catch (e) {
+				cb(e.toString())
+			}
+		})()
+	}, cb)
+}
+
+Transactions.prototype.getTransactions = function (query, cb) {
+	setImmediate(cb, null, { transactions: self.getUnconfirmedTransactionList() })
+}
+
+Transactions.prototype.receiveTransactions = function (transactions, cb) {
 	(async function () {
 		try {
-			var trs = await self.processUnconfirmedTransactionAsync(transaction)
-			cb(null, { transaction: trs })
+			for (let i = 0; i < transactions.length; ++i) {
+				await self.processUnconfirmedTransactionAsync(transaction)
+			}
 		} catch (e) {
-			cb(e.toString())
+			return cb(e)
 		}
-	})
+		cb()
+	})()
 }
 
-Transactions.prototype.getTransactions = function (cb, query) {
-	self.getUnconfirmedTransactionList(false, cb)
+Transactions.prototype.receiveTransactionsAsync = async function (transactions) {
+	for (let i = 0; i < transactions.length; ++i) {
+		await self.processUnconfirmedTransactionAsync(transaction)
+	}
 }
 
 Transactions.prototype.onMessage = function (query) {
 	switch (query.topic) {
 		case "transaction":
-			var transaction = query.message;
-			(async function () {
-				try {
-					await self.processUnconfirmedTransactionAsync(transaction)
-				} catch (e) {
-					library.logger("Failed to process unconfirmed transaction", e)
-				}
-			})()
+			library.sequence.add(function receiveNewTransaction(cb) {
+				var transaction = query.message;
+				self.receiveTransactions([transaction], function (err) {
+					if (err) {
+						console.log('Failed to process transactions: ' + err)
+					}
+				})
+			})
 			break;
 	}
 }

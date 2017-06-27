@@ -124,7 +124,7 @@ Delegates.prototype.undoU_Last = function (cb, scope) {
 	private.undoLast(delegates, cb, scope);
 }
 
-Delegates.prototype.addDelegates = function (cb, query) {
+Delegates.prototype.addDelegates = function (query, cb) {
 	var keypair = modules.api.crypto.keypair(query.secret);
 
 	library.sequence.add(function (cb) {

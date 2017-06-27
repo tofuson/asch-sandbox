@@ -50,9 +50,12 @@ class Model {
     let sql = jsonSql.build({
       type: 'select',
       table: this.schema.table,
-      fields: fields
+      condition: options.condition,
+      fields: fields,
+      limit: options.limit || 100,
+      offset: options.offset || 0,
+      sort: options.sort
     }).query
-    
     let results = await this.db.query(sql)
     return this.parseRows(fields, results)
   }

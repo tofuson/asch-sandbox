@@ -43,13 +43,13 @@ Api.prototype.onBlockchainLoaded = function () {
 	library.sandbox.onMessage(function (message, cb, callback_id) {
 		var handler = private.apies[message.method + " " + message.path];
 		if (handler) {
-			handler(function (err, response) {
+			handler(message.query, function (err, response) {
 				if (err) {
 					err = err.toString();
 				}
 
 				cb(err, {response: response}, callback_id);
-			}, message.query);
+			});
 		} else {
 			cb("API call not found", {}, callback_id);
 		}
@@ -64,13 +64,13 @@ Api.prototype.onBlockchainLoaded = function () {
 	});
 }
 
-Api.prototype.helloworld = function (cb) {
+Api.prototype.helloworld = function (_, cb) {
 	cb(null, {
 		test: "Hello, world!"
 	});
 }
 
-Api.prototype.message = function (cb, query) {
+Api.prototype.message = function (query, cb) {
 	library.bus.message("message", query);
 	cb(null, {});
 }

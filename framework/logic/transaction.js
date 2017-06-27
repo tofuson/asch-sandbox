@@ -66,6 +66,10 @@ Transaction.prototype.verify = function (trs) { //inheritance
 		throw new Error("Invalid timestamp")
 	}
 
+	if (!trs.func) {
+		throw new Error("Invalid function")
+	}
+
 	//verify signature
 	try {
 		var valid = self.verifySignature(trs, trs.senderPublicKey, trs.signature)
@@ -85,9 +89,9 @@ Transaction.prototype.save = function (trs, cb) {
 			senderPublicKey: trs.senderPublicKey,
 			fee: trs.fee,
 			signature: trs.signature,
-			blockId: trs.blockId,
+			height: trs.height,
 			func: trs.func,
-			args: JSON.stringify(trs.args)
+			args: trs.args.join(',')
 		}
 	}, cb)
 }

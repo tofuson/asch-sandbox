@@ -6,6 +6,10 @@ var private = {}, self = null,
 	library = null, modules = null;
 private.loaded = false;
 private.delegates = [];
+private.cacheDelegates = {
+	height: 0,
+	delegates: []
+}
 
 function Round(cb, _library) {
 	self = this;
@@ -40,7 +44,7 @@ private.loop = function (point, cb) {
 			return setImmediate(cb);
 		}
 
-		library.sequence.add(function (cb) {
+		library.sequence.add(function forgeNewBlock(cb) {
 			if (slots.getSlotNumber(currentBlockData) == slots.getSlotNumber()) {
 				(async function () {
 					try {
@@ -48,8 +52,9 @@ private.loop = function (point, cb) {
 						var lastBlock = modules.blockchain.blocks.getLastBlock();
 						library.logger("New dapp block id: " + lastBlock.id + " height: " + lastBlock.height + " via point: " + lastBlock.pointHeight);
 					} catch (e) {
-						library.logger('Failed to create new block: ' + e)
+						library.logger('Failed to create new block: ', e)
 					}
+					modules.blockchain.transactions.clearUnconfirmed()
 				})()
 				cb()
 			} else {
@@ -77,11 +82,23 @@ private.getState = function (executor, height) {
 	return null;
 }
 
+Round.prototype.getCurrentDelegate = function (height) {
+	var delegates = self.generateDelegateList(height);
+
+	var currentSlot = slots.getSlotNumber();
+	var delegate_pos = currentSlot % delegates.length;
+
+	return delegates[delegate_pos];
+}
+
 Round.prototype.calc = function (height) {
 	return Math.floor(height / private.delegates.length) + (height % private.delegates.length > 0 ? 1 : 0);
 }
 
 Round.prototype.generateDelegateList = function (height) {
+	if (private.cacheDelegates.height === height) {
+		return private.cacheDelegates.delegates;
+	}
 	var seedSource = self.calc(height).toString();
 
 	var delegates = private.delegates.slice(0);
@@ -95,6 +112,11 @@ Round.prototype.generateDelegateList = function (height) {
 			delegates[i] = b;
 		}
 		currentSeed = crypto.createHash("sha256").update(currentSeed).digest();
+	}
+
+	private.cacheDelegates = {
+		height: height,
+		delegates: delegates
 	}
 
 	return delegates;

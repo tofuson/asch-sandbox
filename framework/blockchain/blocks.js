@@ -81,7 +81,7 @@ private.popLastBlock = function (oldLastBlock, cb) {
 }
 
 private.verify = async function (block) {
-	console.log('enter Blocks#verify')
+	// console.log('enter Blocks#verify')
 	if (!block) {
 		console.log('verify block undefined');
 		return
@@ -173,38 +173,26 @@ private.verify = async function (block) {
 }
 
 private.getIdSequence = function (height, cb) {
-	modules.api.sql.select({
-		query: {
-			type: "union",
-			unionqueries: [{
-				table: "blocks",
-				fields: [{ id: "id" }, { expression: "max(height)", alias: "height" }],
-				group: {
-					expression: "(cast(height / 101 as integer) + (case when height % 101 > 0 then 1 else 0 end))",
-					having: {
-						height: { $lte: height }
-					}
-				}
-			}, {
-					table: "blocks",
-					condition: {
-						height: 1
-					},
-					fields: [{ id: "id" }, { expression: "1", alias: "height" }]
-				}],
-			sort: {
-				height: 1
-			},
-			limit: 1000
-		},
-		alias: "s",
-		fields: [{ height: "height" }, { expression: "group_concat(s.id)", alias: "ids" }]
-	}, { height: Number, ids: Array }, function (err, rows) {
-		if (err || !rows.length) {
-			return cb(err || "Failed to get block id sequence")
+	(async () => {
+		try {
+			let blocks = await app.model.Block.findAll({
+				fields: ['id', 'height'],
+				condition: {
+					height: { $lte: height }
+				},
+				sort: {
+					height: -1
+				},
+				limit: 5
+			})
+			let ids = blocks.map((b) => {
+				return b.id
+			})
+			return cb(null, { ids: ids, firstHeight: blocks[0].height })
+		} catch (e) {
+			cb(e)
 		}
-		cb(null, rows[0]);
-	});
+	})()
 }
 
 private.rollbackUntilBlock = function (block, cb) {
@@ -225,32 +213,40 @@ private.rollbackUntilBlock = function (block, cb) {
 	});
 }
 
-private.processBlock = async function (block, options) {
+Blocks.prototype.processBlock = async function (block, options) {
 	//library.logger('processBlock block', block)
 	//library.logger('processBlock options', options)
-	console.log('--------enter processBlock', block.id, block.height)
-	try {
-		modules.logic.block.normalize(block)
-		await private.verify(block)
-		for (let i in block.transactions) {
-			modules.logic.transaction.normalize(block.transactions[i])
+	console.log('ProcessBlock', block.id, block.height)
+	if (!options.local) {
+		try {
+			modules.logic.block.normalize(block)
+			await private.verify(block)
+			for (let i in block.transactions) {
+				modules.logic.transaction.normalize(block.transactions[i])
+			}
+		} catch (e) {
+			library.logger('Failed to verify block: ' + e)
+			return
 		}
-	} catch (e) {
-		library.logger('Failed to verify block: ' + e)
-		return
-	}
-	console.log('--------before applyBlock')
-	try {
-		if (options.local) {
+		// console.log('--------before applyBlock')
+		try {
+			await self.applyBlock(block, options)
+		} catch (e) {
+			library.logger('Failed to apply block: ' + e)
+			return
+		}
+	} else {
+		try {
+			self.saveBlock(block)
+			await app.sdb.commitBlock()
+		} catch (e) {
+			console.log('save block error: ' + e)
 			app.sdb.rollbackBlock()
+			throw new Error('Failed to save block: ' + e)
 		}
-		await self.applyBlock(block, options)
-		modules.api.transport.message('block', block)
-		self.setLastBlock(block)
-	} catch (e) {
-		library.logger('Failed to apply block: ' + e)
-		return
 	}
+	if (options.broadcast) modules.api.transport.message('block', block)
+	self.setLastBlock(block)
 }
 
 Blocks.prototype.setLastBlock = function (block) {
@@ -322,7 +318,7 @@ Blocks.prototype.saveBlock = function (block) {
 
 		// TODO encode array
 		if (trs.args) {
-			trs.args = trs.args.join('|')
+			trs.args = trs.args.join(',')
 		}
 		app.sdb.create('Transaction', trs)
 	}
@@ -406,6 +402,7 @@ Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
 	for (let i in unconfirmedList) {
 		let transaction = unconfirmedList[i]
 		let bytes = modules.logic.transaction.getBytes(transaction)
+		// TODO check payload length when process remote block
 		if ((payloadLength + bytes.length) > 8 * 1024 * 1024) {
 			throw new Error('Playload length outof range')
 		}
@@ -430,11 +427,11 @@ Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
 	blockBytes = modules.logic.block.getBytes(block)
 	block.id = modules.api.crypto.getId(blockBytes)
 
-	await private.processBlock(block, { save: true, local: true })
+	await self.processBlock(block, { local: true, broadcast: true })
 }
 
 Blocks.prototype.applyBlock = async function (block, options) {
-	console.log('enter applyblock')
+	// console.log('enter applyblock')
 	let appliedTransactions = {}
 	let fee = 0
 
@@ -469,16 +466,14 @@ Blocks.prototype.applyBlock = async function (block, options) {
 
 			app.sdb.commitTransaction()
 			// TODO not just remove, should mark as applied
-			modules.blockchain.transactions.removeUnconfirmedTransaction(transaction.id)
+			// modules.blockchain.transactions.removeUnconfirmedTransaction(transaction.id)
 			appliedTransactions[transaction.id] = transaction;
 			fee += transaction.fee;
 		}
 
 		// TODO process fee
 
-		if (options.save) {
-			self.saveBlock(block)
-		}
+		self.saveBlock(block)
 
 		await app.sdb.commitBlock()
 	} catch (e) {
@@ -488,20 +483,13 @@ Blocks.prototype.applyBlock = async function (block, options) {
 	}
 }
 
-Blocks.prototype.loadBlocksPeer = function (peer, cb, scope) {
-	console.log("Load blocks after:", scope.lastBlock.height)
-	modules.api.transport.getPeer(peer, "get", "/blocks/after", { lastBlockHeight: scope.lastBlock.height }, function (err, res) {
+Blocks.prototype.loadBlocksPeer = function (height, peer, cb) {
+	console.log("Load blocks after:", height)
+	modules.api.transport.getPeer(peer, "get", "/blocks/after", { lastBlockHeight: height }, function (err, res) {
 		if (err || !res.body || !res.body.success) {
-			return cb(err);
+			return cb('Failed to load blocks from peer: ' + (err || res.body.error));
 		}
-
-		var blocks = self.readDbRows(res.body.body);
-
-		async.eachSeries(blocks, function (block, cb) {
-			private.processBlock(block, cb, scope);
-		}, function (err) {
-			cb(err, blocks)
-		});
+		cb(null, res.body.blocks)
 	});
 }
 
@@ -530,90 +518,66 @@ Blocks.prototype.loadBlocksOffset = function (limit, offset, cb) {
 	// }, { limit: limit, offset: offset })
 }
 
-Blocks.prototype.findCommon = function (cb, query) {
-	modules.api.sql.select({
-		table: "blocks",
-		condition: {
-			id: {
-				$in: query.ids
-			},
-			height: { $between: [query.min, query.max] }
-		},
-		sort: {
-			height: 1
-		},
-		fields: [{ expression: "max(height)", alias: "height" }, "id", "prevBlockId"]
-	}, { "height": Number, "id": String, "prevBlockId": String }, function (err, rows) {
-		if (err) {
-			return cb(err);
+Blocks.prototype.findCommon = function (query, cb) {
+	(async () => {
+		try {
+			let blocks = await app.model.Block.findAll({
+				condition: {
+					id: {
+						$in: query.ids
+					},
+					height: { $between: [query.min, query.max] }
+				},
+				sort: {
+					height: 1
+				},
+			})
+			console.log('findCommon', query, blocks)
+			if (!blocks || !blocks.length) {
+				return cb('Common block not found')
+			}
+			return cb(null, blocks[blocks.length - 1])
+		} catch (e) {
+			return cb('Failed to find common block: ' + e)
 		}
-
-		var commonBlock = rows.length && rows[0].height ? rows[0] : null;
-		cb(commonBlock ? null : "No common block", commonBlock);
-	});
+	})()
 }
 
-Blocks.prototype.getCommonBlock = function (height, peer, cb) {
-	var commonBlock = null;
-	var lastBlockHeight = height;
-	var count = 0;
+Blocks.prototype.getCommonBlock = async function (height, peer, cb) {
+	let lastBlockHeight = height;
 
-	async.whilst(
-		function () {
-			return !commonBlock && count < 30;
-		},
-		function (next) {
-			count++;
-			private.getIdSequence(lastBlockHeight, function (err, data) {
-				if (err) {
-					return next(err);
-				}
-				var max = lastBlockHeight;
-				lastBlockHeight = data.height;
-				modules.api.transport.getPeer(peer, "get", "/blocks/common", {
-					ids: data.ids,
-					max: max,
-					min: lastBlockHeight
-				}, function (err, data) {
-					if (err || !data.body || !data.body.success) {
-						return next(err || "Failed to find common block");
-					}
+	let idSequence = await PIFY(private.getIdSequence)(lastBlockHeight)
+	console.log('getIdSequence', idSequence)
+	var max = lastBlockHeight;
+	lastBlockHeight = idSequence.firstHeight;
 
-					if (!data.body) {
-						return next("Failed to find common block");
-					}
-
-					var condition = {
-						id: data.body.id,
-						height: data.body.height
-					};
-					if (data.body.prevBlockId) {
-						condition.prevBlockId = data.body.prevBlockId
-					}
-					modules.api.sql.select({
-						table: "blocks",
-						condition: condition,
-						fields: [{ expression: "count(id)", alias: "count" }]
-					}, { "count": Number }, function (err, rows) {
-						if (err || !rows.length) {
-							return next(err || "Block comparision failed");
-						}
-
-						if (rows[0].count) {
-							commonBlock = data.body;
-						}
-						next();
-					});
-				});
-			});
-		},
-		function (err) {
-			setImmediate(cb, err, commonBlock);
-		}
-	)
+	let params = {
+		ids: idSequence.ids,
+		max: max,
+		min: lastBlockHeight
+	}
+	let res = await PIFY(modules.api.transport.getPeer)(peer, 'get', '/blocks/common', params)
+	if (!res.body) {
+		throw new Error('Failed to find common block')
+	}
+	if (!res.body.success) {
+		throw new Error('Get common block error: ' + res.body.error)
+	}
+	var condition = {
+		id: res.body.id,
+		height: res.body.height
+	}
+	if (res.body.prevBlockId) {
+		condition.prevBlockId = res.body.prevBlockId
+	}
+	let block = await app.model.Block.findOne({ condition: condition })
+	if (!block) {
+		throw new Error('Failed to find local common block')
+	}
+	return block
 }
 
-Blocks.prototype.count = function (cb) {
+Blocks.prototype.count = function (_, cb) {
 	modules.api.sql.select({
 		table: "blocks",
 		fields: [{
@@ -628,22 +592,22 @@ Blocks.prototype.count = function (cb) {
 	});
 }
 
-Blocks.prototype.getHeight = function (cb) {
-	cb(null, private.lastBlock.height);
+Blocks.prototype.getHeight = function (_, cb) {
+	cb(null, { height: private.lastBlock.height });
 }
 
 Blocks.prototype.getLastBlock = function () {
 	return private.lastBlock;
 }
 
-Blocks.prototype.getBlock = function (cb, query) {
+Blocks.prototype.getBlock = function (query, cb) {
 	modules.api.sql.select(extend({}, library.scheme.selector["blocks"], {
 		condition: { "b.id": query.id },
 		fields: library.scheme.aliasedFields
 	}), library.scheme.types, cb);
 }
 
-Blocks.prototype.getBlocks = function (cb, query) {
+Blocks.prototype.getBlocks = function (query, cb) {
 	modules.api.sql.select(extend({}, library.scheme.selector["blocks"], {
 		limit: !query.limit || query.limit > 1000 ? 1000 : query.limit,
 		offset: !query.offset || query.offset < 0 ? 0 : query.offset,
@@ -654,39 +618,82 @@ Blocks.prototype.getBlocks = function (cb, query) {
 	}), library.scheme.types, cb);
 }
 
-Blocks.prototype.getBlocksAfter = function (cb, query) {
-	modules.api.sql.select(extend({}, library.scheme.selector["blocks"], {
-		limit: 1000,
-		condition: {
-			"b.height": { $gt: query.lastBlockHeight }
-		},
-		fields: library.scheme.aliasedFields,
-		sort: {
-			height: 1
+Blocks.prototype.getBlocksAfter = function (query, cb) {
+	(async () => {
+		let height = query.lastBlockHeight
+		let blocks = await app.model.Block.findAll({
+			condition: {
+				height: { $gt: height }
+			},
+			limit: 200,
+			sort: { height: 1 }
+		})
+		if (!blocks || !blocks.length) return cb('Failed to get blocks afet ' + height)
+		// console.log('get blocks', blocks)
+		let maxHeight = blocks[blocks.length - 1].height
+		let transactions = await app.model.Transaction.findAll({
+			condition: {
+				height: { $gt: height, $lte: maxHeight }
+			}
+		})
+		// console.log('get transactions', transactions)
+		let firstHeight = blocks[0].height
+		for (let i in transactions) {
+			let t = transactions[i]
+			t.args = t.args.split(',')
+			let h = t.height
+			let b = blocks[h - firstHeight]
+			if (!!b) {
+				if (!b.transactions) {
+					b.transactions = []
+				}
+				b.transactions.push(t)
+			}
 		}
-	}), library.scheme.types, cb);
+		cb(null, {blocks: blocks})
+	})()
 }
 
 Blocks.prototype.onMessage = function (query) {
 	if (query.topic == "block" && private.loaded) {
-		library.sequence.add(function (cb) {
+		// TODO reject this block if already processed
+		library.sequence.add(function receiveNewBlock(cb) {
 			var block = query.message
 			// console.log("check", block.prevBlockId + " == " + private.lastBlock.id, block.id + " != " + private.lastBlock.id)
-			if (block.prevBlockId == private.lastBlock.id && block.id != private.lastBlock.id && block.id != private.genesisBlock.id) {
+			if (block.prevBlockId == private.lastBlock.id &&
+				block.id != private.lastBlock.id &&
+				block.id != private.genesisBlock.id &&
+				block.height == private.lastBlock.height + 1) {
 				(async () => {
+					let success = true
 					try {
-						await private.processBlock(block, { save: true, local: false })
+						app.sdb.rollbackBlock()
+						await self.processBlock(block, { local: false, broadcast: true })
 					} catch (e) {
+						success = false
 						library.logger("Blocks#processBlock error", e)
 					}
+					if (success) {
+						for (let i in block.transactions) {
+							modules.blockchain.transactions.removeUnconfirmedTransaction(block.transactions[i].id)
+						}
+					}
+					try {
+						let unconfirmedTrs = modules.blockchain.transaction.getUnconfirmedTransactionList()
+						modules.blockchain.transactions.clearUnconfirmed()
+						await modules.blockchain.transactions.receiveTransactionsAsync(unconfirmedTrs)
+					} catch (e) {
+						console.log('Failed to redo unconfirmed transactions: ' + e)
+					}
 				})()
+			} else {
+				cb()
 			}
-			cb()
 		});
 	}
 
 	if (query.topic == "rollback" && private.loaded) {
-		library.sequence.add(function (cb) {
+		library.sequence.add(function rollbackBlock(cb) {
 			var block = query.message;
 			console.log("rollback", block)
 			if (block.pointHeight <= private.lastBlock.pointHeight) {
@@ -715,7 +722,7 @@ Blocks.prototype.onBind = function (_modules) {
 			let count = await app.model.Block.count()
 			console.log('Blocks found:', count)
 			if (count === 0) {
-				await private.processBlock(private.genesisBlock, { save: true })
+				await self.processBlock(private.genesisBlock, {})
 			} else {
 				let block = await app.model.Block.findOne({
 					condition: {

@@ -10,8 +10,13 @@ var BalanceManager = require('./framework/helpers/balance-manager')
 
 var rootDir = path.join(__dirname, 'framework')
 var entryFile = path.join(rootDir, 'index.js')
-var dappRootDir = path.join(process.cwd(), path.dirname(process.argv[2]))
+var dappRootDir = process.argv[2]
 var secret = process.argv[3]
+
+if (dappRootDir[0] !== '/') {
+    dappRootDir = path.join(process.cwd(), dappRootDir)
+}
+console.log('dappRootDir', dappRootDir)
 
 function runDapp(app) {
     var vm = new NodeVM({

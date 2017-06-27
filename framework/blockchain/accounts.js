@@ -243,7 +243,7 @@ Accounts.prototype.onBind = function (_modules) {
 	modules = _modules;
 }
 
-Accounts.prototype.open = function (cb, query) {
+Accounts.prototype.open = function (query, cb) {
 	if (!query.secret) {
 		return cb('secret should not be empty');
 	}
@@ -263,7 +263,7 @@ Accounts.prototype.open = function (cb, query) {
 	cb(null, { account: account });
 }
 
-Accounts.prototype.open2 = function (cb, query) {
+Accounts.prototype.open2 = function (query, cb) {
 	if (!query.publicKey) {
 		return cb("publicKey should not be empty");
 	}
