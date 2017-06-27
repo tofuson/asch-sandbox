@@ -79,6 +79,28 @@ function runDapp(app) {
     process.send('__sandbox_inner_ready__')
 }
 
+function run2(app) {
+    var dapp = require(entryFile)
+    process.on('SIGTERM', function () {
+    })
+    process.on('SIGINT', function () {
+    })
+    process.on('message', function (data) {
+        dapp.processParentMessage(data);
+    })
+
+    dapp.on('message', function (data) {
+        process.send(data);
+    })
+
+    dapp.on('exit', function (code) {
+        process.exit(code);
+    })
+
+    dapp.run(app)
+    process.send('__sandbox_inner_ready__')
+}
+
 async function loadModels(dir) {
     let modelFiles = await helpers.PIFY(fs.readdir)(dir)
     for (let i in modelFiles) {
@@ -131,7 +153,7 @@ async function main() {
     await loadContracts(path.join(dappRootDir, 'contract'))
 
     await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])
-    runDapp(global.app)
+    run2(global.app)
 }
 
 (async function () {
