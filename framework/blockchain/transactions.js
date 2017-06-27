@@ -66,6 +66,7 @@ Transactions.prototype.processUnconfirmedTransactionAsync = async function (tran
 	} else {
 		transaction.id = id
 	}
+	// console.log('process unconfirmed trs', transaction.id, transaction.func)
 
 	if (self.pool.has(transaction.id)) {
 		throw new Error('Transaction already processed')
@@ -102,7 +103,7 @@ Transactions.prototype.processUnconfirmedTransactionAsync = async function (tran
 	try {
 		let error = await fn.apply(bind, transaction.args)
 		if (error) {
-			throw new Error('Apply transaction error: ' + error)
+			throw new Error(error)
 		}
 	} catch (e) {
 		app.sdb.rollbackTransaction()
@@ -127,11 +128,47 @@ Transactions.prototype.clearUnconfirmed = function () {
 }
 
 Transactions.prototype.addTransaction = function (query, cb) {
-	library.sequence.add(function processNewTransaction(cb) {
+	library.sequence.add(function addTransaction(cb) {
 		(async function () {
 			try {
 				var trs = await self.processUnconfirmedTransactionAsync(query.transaction)
-				cb(null, { transaction: trs })
+				cb(null, { transactionId: trs.id })
+			} catch (e) {
+				cb(e.toString())
+			}
+		})()
+	}, cb)
+}
+
+Transactions.prototype.addTransactionUnsigned = function (query, cb) {
+	let valid = library.validator.validate(query, {
+		type: 'object',
+		properties: {
+			secret: {
+				type: 'string'
+			},
+			fee: {
+				type: 'string'
+			},
+			func: {
+				type: 'string'
+			},
+			args: {
+				type: 'array'
+			}
+		},
+		required: ['secret', 'fee', 'func']
+	})
+	if (!valid) {
+		return setImmediate(cb, library.validator.getLastError().details[0].message)
+	}
+	library.sequence.add(function addTransactionUnsigned(cb) {
+		(async function () {
+			try {
+				let keypair = modules.api.crypto.keypair(query.secret)
+				let trs = modules.logic.transaction.create(query, keypair)
+				await self.processUnconfirmedTransactionAsync(trs)
+				cb(null, { transactionId: trs.id })
 			} catch (e) {
 				cb(e.toString())
 			}

@@ -1,4 +1,4 @@
-var ed = require("ed25519");
+var ed = require("../helpers/ed.js");
 var crypto = require("crypto");
 var bignum = require("bignumber");
 

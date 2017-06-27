@@ -76,7 +76,7 @@ class SmartDB {
     if (this.trsLogs.length > 0) {
       this.commitTransaction()
     }
-
+    console.log('enter commitBlock')
     const BATCH_SIZE = 100
     let batchs = []
     let sqls = []
@@ -99,7 +99,7 @@ class SmartDB {
     if (batchs.length === 0) {
       return true
     }
-
+    console.log('batchs size', batchs.length)
     try {
       var t = await this.app.db.transaction()
       for (let i in batchs) {
@@ -136,7 +136,7 @@ class SmartDB {
     results.forEach((item) => {
       indexes.forEach((i) => {
         let key = fromIndexSchemaToToken(i, item)
-        if (invertedList.get(key) != undefined) throw Error('Ununique index not supported: ' + i)
+        if (invertedList.get(key) != undefined) throw Error('Ununique index not supported: ' + key)
         let cacheItem = {}
         fields.forEach((f) => {
           cacheItem[f] = item[f]

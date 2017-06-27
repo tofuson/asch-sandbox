@@ -11,7 +11,7 @@ var BalanceManager = require('./framework/helpers/balance-manager')
 var rootDir = path.join(__dirname, 'framework')
 var entryFile = path.join(rootDir, 'index.js')
 var dappRootDir = process.argv[2]
-var secret = process.argv[3]
+var secrets = process.argv.slice(3)
 
 if (dappRootDir[0] !== '/') {
     dappRootDir = path.join(process.cwd(), dappRootDir)
@@ -44,7 +44,7 @@ function runDapp(app) {
                 'bignumber',
                 'bytebuffer',
                 'change-case',
-                'ed25519',
+                'sodium',
                 'extend',
                 'ip',
                 'z-schema',
@@ -114,7 +114,7 @@ async function main() {
         model: {},
         contract: {},
         rootDir: dappRootDir,
-        secret: secret
+        secrets: secrets
     }
     app.db = new ORM('', '', '', {
         dialect: 'sqlite',

@@ -15,6 +15,20 @@ function Transaction(cb, _library) {
 	cb(null, self)
 }
 
+Transaction.prototype.create = function (data, keypair, secondKeypair) {
+	var trs = {
+    fee: '0',
+    senderPublicKey: keypair.publicKey.toString('hex'),
+		senderId: modules.blockchain.accounts.generateAddressByPublicKey(keypair.publicKey),
+    timestamp: slots.getTime(),
+    func: data.func,
+		args: data.args
+  };
+  trs.signature = modules.api.crypto.sign(keypair, this.getBytes(trs))
+  trs.id = this.getId(trs)
+	return trs
+}
+
 Transaction.prototype.getId = function (trs) {
 	return modules.api.crypto.getId(this.getBytes(trs))
 }
@@ -46,6 +60,10 @@ Transaction.prototype.getBytes = function (trs, skipSignature) {
 		throw Error(e.toString())
 	}
 	return bb.toBuffer()
+}
+
+Transaction.prototype.verifyBytes = function (publicKey, signature, bytes) {
+	return modules.api.crypto.verify(publicKey, signature, bytes)
 }
 
 Transaction.prototype.verifySignature = function (trs, publicKey, signature) {

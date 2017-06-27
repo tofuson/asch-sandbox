@@ -38,10 +38,10 @@ module.exports = {
   },
 
   transfer: async function (currency, amount, recipientId) {
-    console.log('apply trs', currency, amount, recipientId)
+    // console.log('apply trs', currency, amount, recipientId)
     if (!recipientId) return 'Invalid recipient'
 
-    var balance = app.balances.get('Balance', this.trs.senderId, currency)
+    var balance = app.balances.get(this.trs.senderId, currency)
 
     if (this.block.height !== 1 && balance.lt(amount)) return 'Insufficient balance'
     app.balances.transfer(currency, amount, this.trs.senderId, recipientId)

@@ -143,16 +143,17 @@ private.verify = async function (block) {
 		throw new Error("Invalid payload hash");
 	}
 
+	console.log('before verify transaction signature')
 	let payloadHash = crypto.createHash('sha256')
 	let payloadLength = 0
 	try {
 		for (let i in block.transactions) {
-			let transaction = block.transactions[i]
-			var bytes = modules.logic.transaction.getBytes(transaction)
+			let t = block.transactions[i]
+			var bytes = modules.logic.transaction.getBytes(t, true)
 			payloadHash.update(bytes)
 			payloadLength += bytes.length
 
-			let valid = modules.logic.transaction.verify(transaction)
+			let valid = modules.logic.transaction.verifyBytes(t.senderPublicKey, t.signature, bytes)
 			if (!valid) {
 				throw new Error('Invalid transaction signature')
 			}
@@ -160,6 +161,7 @@ private.verify = async function (block) {
 	} catch (e) {
 		throw new Error('Failed to verify transaction: ' + e)
 	}
+	console.log('after verify transaction signature')
 
 	payloadHash = payloadHash.digest()
 
@@ -221,19 +223,20 @@ Blocks.prototype.processBlock = async function (block, options) {
 		try {
 			modules.logic.block.normalize(block)
 			await private.verify(block)
-			for (let i in block.transactions) {
-				modules.logic.transaction.normalize(block.transactions[i])
-			}
+			// TODO performance optimization 
+			// for (let i in block.transactions) {
+			// 	modules.logic.transaction.normalize(block.transactions[i])
+			// }
 		} catch (e) {
 			library.logger('Failed to verify block: ' + e)
-			return
+			throw e
 		}
-		// console.log('--------before applyBlock')
+		console.log('before applyBlock')
 		try {
 			await self.applyBlock(block, options)
 		} catch (e) {
 			library.logger('Failed to apply block: ' + e)
-			return
+			throw e
 		}
 	} else {
 		try {
@@ -245,7 +248,10 @@ Blocks.prototype.processBlock = async function (block, options) {
 			throw new Error('Failed to save block: ' + e)
 		}
 	}
-	if (options.broadcast) modules.api.transport.message('block', block)
+	if (options.broadcast) {
+		modules.api.transport.message('block', block)
+	}
+	console.log('Block applied correctly with ' + block.count +' transactions')
 	self.setLastBlock(block)
 }
 
@@ -311,7 +317,7 @@ Blocks.prototype.saveBatchBlock = function (blocks, cb) {
 }
 
 Blocks.prototype.saveBlock = function (block) {
-	// console.log('Blocks#save height', block.height)
+	console.log('Blocks#save height', block.height)
 	for (let i in block.transactions) {
 		let trs = block.transactions[i]
 		trs.height = block.height
@@ -329,6 +335,7 @@ Blocks.prototype.saveBlock = function (block) {
 		}
 	}
 	app.sdb.create('Block', blockObj)
+	console.log('Blocks#save end')
 }
 
 Blocks.prototype.readDbRows = function (rows) {
@@ -395,13 +402,13 @@ Blocks.prototype.genesisBlock = function () {
 	return private.genesisBlock;
 }
 
-Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
+Blocks.prototype.createBlock = async function (keypair, timestamp, point, cb) {
 	let unconfirmedList = modules.blockchain.transactions.getUnconfirmedTransactionList()
 	let payloadHash = crypto.createHash('sha256')
 	let payloadLength = 0
 	for (let i in unconfirmedList) {
 		let transaction = unconfirmedList[i]
-		let bytes = modules.logic.transaction.getBytes(transaction)
+		let bytes = modules.logic.transaction.getBytes(transaction, true)
 		// TODO check payload length when process remote block
 		if ((payloadLength + bytes.length) > 8 * 1024 * 1024) {
 			throw new Error('Playload length outof range')
@@ -410,7 +417,7 @@ Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
 		payloadLength += bytes.length
 	}
 	var block = {
-		delegate: executor.keypair.publicKey.toString("hex"),
+		delegate: keypair.publicKey.toString("hex"),
 		height: private.lastBlock.height + 1,
 		prevBlockId: private.lastBlock.id,
 		pointId: point.id,
@@ -423,7 +430,7 @@ Blocks.prototype.createBlock = async function (executor, timestamp, point, cb) {
 	}
 
 	let blockBytes = modules.logic.block.getBytes(block)
-	block.signature = modules.api.crypto.sign(executor.keypair, blockBytes)
+	block.signature = modules.api.crypto.sign(keypair, blockBytes)
 	blockBytes = modules.logic.block.getBytes(block)
 	block.id = modules.api.crypto.getId(blockBytes)
 

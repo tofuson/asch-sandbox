@@ -52,8 +52,8 @@ class Model {
       table: this.schema.table,
       condition: options.condition,
       fields: fields,
-      limit: options.limit || 100,
-      offset: options.offset || 0,
+      limit: options.limit,
+      offset: options.offset,
       sort: options.sort
     }).query
     let results = await this.db.query(sql)

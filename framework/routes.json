@@ -20,9 +20,14 @@
 		"handler": "blockchain.accounts.open2"
 	},
 	{
-		"path": "/transaction",
+		"path": "/transactions/signed",
 		"method": "put",
 		"handler": "blockchain.transactions.addTransaction"
+	},
+	{
+		"path": "/transactions/unsigned",
+		"method": "put",
+		"handler": "blockchain.transactions.addTransactionUnsigned"
 	},
 	{
 		"path": "/transactions",
