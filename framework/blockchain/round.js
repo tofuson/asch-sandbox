@@ -124,8 +124,8 @@ Round.prototype.generateDelegateList = function (height) {
 
 Round.prototype.onBind = function (_modules) {
 	modules = _modules;
-	for (let i in app.secrets) {
-		let keypair = modules.api.crypto.keypair(app.secrets[i])
+	for (let i in app.config.secrets) {
+		let keypair = modules.api.crypto.keypair(app.config.secrets[i])
 		let address = modules.blockchain.accounts.generateAddressByPublicKey(keypair.publicKey)
 		console.log('Forging enable on account: ' + address)
 		private.keypairs[address] = keypair

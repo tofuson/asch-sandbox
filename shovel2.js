@@ -136,7 +136,7 @@ async function main() {
         model: {},
         contract: {},
         rootDir: dappRootDir,
-        secrets: secrets
+        config: require(path.join(dappRootDir, 'config.json'))
     }
     app.db = new ORM('', '', '', {
         dialect: 'sqlite',

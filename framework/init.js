@@ -17,10 +17,6 @@ module.exports = function (options, cb) {
 			cb(null, console.log);
 		},
 
-		config: function (cb) {
-			cb(null, require("./config.json"));
-		},
-
 		// scheme: ["logger", function (cb, scope) {
 		// 	try {
 		// 		var db = require("./blockchain.json");
@@ -169,7 +165,7 @@ module.exports = function (options, cb) {
 			cb(null, protocolBuffers(schema));
 		},
 
-		modules: ["sandbox", "config", "logger", "bus", "sequence", "validator", "protobuf", function (cb, scope) {
+		modules: ["sandbox", "logger", "bus", "sequence", "validator", "protobuf", function (cb, scope) {
 			var lib = require("./modules.full.json");
 			var tasks = [];
 			Object.keys(lib).forEach(function (path) {
