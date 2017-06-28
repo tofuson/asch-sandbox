@@ -4,6 +4,7 @@ var NodeVM = require('./vm2').NodeVM
 //var Sequelize = require('sequelize')
 var changeCase = require('change-case')
 var helpers = require('./framework/helpers')
+var amountHelper = require('./framework/helpers/amount')
 var ORM = require('./framework/helpers/orm')
 var SmartDB = require('./framework/helpers/smartdb')
 var BalanceManager = require('./framework/helpers/balance-manager')
@@ -137,6 +138,16 @@ async function main() {
         contract: {},
         rootDir: dappRootDir,
         config: require(path.join(dappRootDir, 'config.json'))
+    }
+    app.validators = {
+        amount: function (value) {
+            return amountHelper.validate(value)
+        }
+    }
+    app.validate = function (type, value) {
+        if (!app.validators) throw new Error('Validator not found: ' + type)
+        let error = app.validators[type](value)
+        if (error) throw new Error(error)
     }
     app.db = new ORM('', '', '', {
         dialect: 'sqlite',

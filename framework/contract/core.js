@@ -1,44 +1,39 @@
 module.exports = {
 
   deposit: async function (currency, amount, srcId, recipientId) {
-    var trs = this.trs
-    var sender = this.sender
-
     if (!recipientId) return 'Invalid recipient'
 
-    // if (amount <= 0) {
-    //   return 'Invalid transaction amount'
-    // }
+    app.validate('amount', amount)
 
-    // if (this.trs.senderPublicKey != modules.blockchain.blocks.genesisBlock().delegate) {
-    //   return 'Sender is not a delegate'
-    // }
+    if (app.meta.delegates.indexOf(this.trs.senderPublicKey) === -1) {
+      return 'Sender is not a delegate'
+    }
 
-    let count = await app.model.Transaction.count({ where: { srcId: srcId } })
-    if (count > 0) return 'Already processed'
+    let exists = await app.model.Deposit.exists({ srcId: srcId })
+    if (exists) return 'Double deposit'
 
-    let key = 'core.deposit@' + srcId
-    if (app.library.flash.has(key)) return 'Double submit'
+    app.sdb.lock('core.deposit@' + srcId)
 
-    app.flash.set(key, true)
-
-    app.library.sdb.updateBalance(currency, amount, recipientId)
-    app.library.sdb.create('deposits')
+    app.balances.increase(recipientId, currency, amount)
+    app.sdb.create('Deposit', {
+      tid: this.trs.id,
+      currency: currency,
+      amount: amount,
+      srcId: srcId,
+      recipientId: recipientId
+    })
   },
 
   withdrawal: async function (currency, amount) {
-    // TODO validate arguments
+    app.validate('amount', amount)
 
-    // if (amount < 0) return 'Invalid amount'
+    var balance = app.balances.get(this.trs.senderId, currency)
 
-    let balance = app.library.sdb.getBalance(currency, this.trs.senderId)
-
-    // if (balance < amount) return 'Insufficient balance'
-    app.library.sdb.updateBalance(currency, '-' + amount, this.trs.senderId)
+    if (balance.lt(amount)) return 'Insufficient balance'
+    app.balances.decrease(this.trs.senderId, currency, amount)
   },
 
   transfer: async function (currency, amount, recipientId) {
-    // console.log('apply trs', currency, amount, recipientId)
     if (!recipientId) return 'Invalid recipient'
 
     var balance = app.balances.get(this.trs.senderId, currency)
@@ -50,7 +45,7 @@ module.exports = {
       senderId: this.trs.senderId,
       recipientId: recipientId,
       currency: currency,
-      amount: amount 
+      amount: amount
     })
   }
 }
