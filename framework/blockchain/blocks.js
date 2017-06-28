@@ -525,7 +525,8 @@ Blocks.prototype.loadBlocksOffset = function (limit, offset, cb) {
 	// }, { limit: limit, offset: offset })
 }
 
-Blocks.prototype.findCommon = function (query, cb) {
+Blocks.prototype.findCommon = function (req, cb) {
+	let query = req.query
 	(async () => {
 		try {
 			let blocks = await app.model.Block.findAll({
@@ -607,25 +608,31 @@ Blocks.prototype.getLastBlock = function () {
 	return private.lastBlock;
 }
 
-Blocks.prototype.getBlock = function (query, cb) {
+Blocks.prototype.getBlock = function (req, cb) {
+	let query = req.query
 	modules.api.sql.select(extend({}, library.scheme.selector["blocks"], {
 		condition: { "b.id": query.id },
 		fields: library.scheme.aliasedFields
 	}), library.scheme.types, cb);
 }
 
-Blocks.prototype.getBlocks = function (query, cb) {
-	modules.api.sql.select(extend({}, library.scheme.selector["blocks"], {
-		limit: !query.limit || query.limit > 1000 ? 1000 : query.limit,
-		offset: !query.offset || query.offset < 0 ? 0 : query.offset,
-		fields: library.scheme.aliasedFields,
-		sort: {
-			height: 1
+Blocks.prototype.getBlocks = function (req, cb) {
+	(async () => {
+		try {
+			let count = await app.model.Block.count()
+			let blocks = await app.model.Block.findAll({
+				limit: req.query.limit || 100,
+				offset: req.query.offset || 0
+			})
+			return cb(null, { blocks: blocks, count: count })
+		} catch (e) {
+			return cb('System error')
 		}
-	}), library.scheme.types, cb);
+	})()
 }
 
-Blocks.prototype.getBlocksAfter = function (query, cb) {
+Blocks.prototype.getBlocksAfter = function (req, cb) {
+	let query = req.query
 	(async () => {
 		let height = query.lastBlockHeight
 		let blocks = await app.model.Block.findAll({

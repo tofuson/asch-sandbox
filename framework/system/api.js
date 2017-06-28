@@ -64,14 +64,14 @@ Api.prototype.onBlockchainLoaded = function () {
 	});
 }
 
-Api.prototype.helloworld = function (_, cb) {
+Api.prototype.helloworld = function (req, cb) {
 	cb(null, {
 		test: "Hello, world!"
 	});
 }
 
-Api.prototype.message = function (query, cb) {
-	library.bus.message("message", query);
+Api.prototype.message = function (req, cb) {
+	library.bus.message("message", req.query);
 	cb(null, {});
 }
 

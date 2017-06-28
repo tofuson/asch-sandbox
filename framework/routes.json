@@ -10,16 +10,6 @@
 		"handler": "system.api.message"
 	},
 	{
-		"path": "/openAccount",
-		"method": "post",
-		"handler": "blockchain.accounts.open"
-	},
-	{
-		"path": "/openAccount2",
-		"method": "post",
-		"handler": "blockchain.accounts.open2"
-	},
-	{
 		"path": "/transactions/signed",
 		"method": "put",
 		"handler": "blockchain.transactions.addTransaction"
@@ -35,9 +25,9 @@
 		"handler": "blockchain.transactions.getTransactions"
 	},
 	{
-		"path": "/blocks/get",
+		"path": "/transactions/:id",
 		"method": "get",
-		"handler": "blockchain.blocks.getBlock"
+		"handler": "blockchain.transactions.getTransaction"
 	},
 	{
 		"path": "/blocks",

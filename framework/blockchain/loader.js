@@ -10,11 +10,11 @@ function Loader(cb, _library) {
 }
 
 private.loadBlockChain = async function () {
-	let count = modules.blockchain.blocks.count()
+	// let count = modules.blockchain.blocks.count()
 
-	library.logger('total blocks ' + count)
-	modules.blockchain.blocks.getBlock()
-	library.bus.message("blockchainLoaded");
+	// library.logger('total blocks ' + count)
+	// modules.blockchain.blocks.getBlock()
+	// library.bus.message("blockchainLoaded");
 }
 
 Loader.prototype.onBind = function (_modules) {

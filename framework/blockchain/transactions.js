@@ -127,7 +127,8 @@ Transactions.prototype.clearUnconfirmed = function () {
 	self.pool.clear()
 }
 
-Transactions.prototype.addTransaction = function (query, cb) {
+Transactions.prototype.addTransaction = function (req, cb) {
+	let query = req.query
 	library.sequence.add(function addTransaction(cb) {
 		(async function () {
 			try {
@@ -140,7 +141,8 @@ Transactions.prototype.addTransaction = function (query, cb) {
 	}, cb)
 }
 
-Transactions.prototype.addTransactionUnsigned = function (query, cb) {
+Transactions.prototype.addTransactionUnsigned = function (req, cb) {
+	let query = req.query
 	let valid = library.validator.validate(query, {
 		type: 'object',
 		properties: {
@@ -176,8 +178,42 @@ Transactions.prototype.addTransactionUnsigned = function (query, cb) {
 	}, cb)
 }
 
-Transactions.prototype.getTransactions = function (query, cb) {
+Transactions.prototype.getUnconfirmedTransactions = function (_, cb) {
 	setImmediate(cb, null, { transactions: self.getUnconfirmedTransactionList() })
+}
+
+Transactions.prototype.getTransactions = function (req, cb) {
+	(async function () {
+		try {
+			let count = await app.model.Transaction.count()
+			let transactions = await app.model.Transaction.findAll({
+				limit: req.query.limit || 100,
+				offset: req.query.offset || 0
+			})
+			if (!transactions) transactions = []
+			return cb(null, { transactions: transactions, count: count })
+		} catch (e) {
+			return cb('System error')
+		}
+	})()
+}
+
+Transactions.prototype.getTransaction = function (req, cb) {
+	(async function () {
+		try {
+			if (!req.params || !req.params.id) return cb('Invalid transaction id')
+			let id = req.params.id
+			let trs = await app.model.Transaction.findOne({
+				condition: {
+					id: id
+				}
+			})
+			if (!trs) return cb('Transaction not found')
+			return cb(null, { transaction: trs })
+		} catch (e) {
+			return cb('System error')
+		}
+	})()
 }
 
 Transactions.prototype.receiveTransactions = function (transactions, cb) {
