@@ -231,7 +231,7 @@ Transactions.prototype.receiveTransactions = function (transactions, cb) {
 
 Transactions.prototype.receiveTransactionsAsync = async function (transactions) {
 	for (let i = 0; i < transactions.length; ++i) {
-		await self.processUnconfirmedTransactionAsync(transaction)
+		await self.processUnconfirmedTransactionAsync(transactions[i])
 	}
 }
 

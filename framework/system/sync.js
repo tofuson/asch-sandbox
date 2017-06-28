@@ -75,7 +75,7 @@ private.blockSync = function blockSync(cb) {
 			if (err) return cb('Failed to get blocks height: ' + err)
 			console.log('blockSync get block height', res)
 			if (!res.body || !res.body.success) return cb('Failed to get blocks height: ' + res.body)
-			if (bignum(lastBlock.height).gte(res.body.height))  return cb()
+			if (bignum(lastBlock.height).gte(res.body.height)) return cb()
 			private.findUpdate(lastBlock, res.peer, cb);
 		});
 	});
@@ -229,83 +229,6 @@ private.withdrawalSync = function withdrawalSync(cb) {
 	});
 }
 
-private.balanceSync = function balanceSync(cb) {
-	modules.blockchain.accounts.getExecutor(function (err, executor) {
-		if (!err && executor.isAuthor) {
-			modules.api.sql.select({
-				table: "transactions",
-				"alias": "t",
-				join: [
-					{
-						"type": "inner",
-						"table": "blocks",
-						"alias": "b",
-						"on": {
-							"b.id": "t.blockId"
-						}
-					}, {
-						"type": "inner",
-						"table": "asset_dapptransfer",
-						"alias": "t_dt",
-						"on": {
-							"t.id": "t_dt.transactionId"
-						}
-					}
-				],
-				fields: [{ "t_dt.src_id": "id" }],
-				condition: {
-					type: TransactionTypes.OUT_TRANSFER
-				},
-				sort: {
-					"b.height": -1
-				},
-				limit: 1
-			}, { id: String }, function (err, found) {
-				if (err) {
-					return cb(err);
-				}
-
-				var id = null;
-
-				if (found.length) {
-					id = found[0].id;
-				}
-
-				modules.api.dapps.getBalanceTransactions(id, function (err, transactions) {
-					if (err) {
-						return cb(err);
-					}
-					modules.blockchain.accounts.setAccountAndGet({ publicKey: executor.keypair.publicKey }, function (err, sender) {
-						if (err) {
-							return cb(err);
-						}
-						async.eachSeries(transactions, function (transaction, cb) {
-							modules.blockchain.accounts.setAccountAndGet({ publicKey: transaction.senderPublicKey }, function (err, recipient) {
-								var trs = modules.logic.transaction.create({
-									type: TransactionTypes.OUT_TRANSFER,
-									sender: sender,
-									keypair: executor.keypair,
-									amount: transaction.amount,
-									src_id: transaction.id,
-									recipientId: recipient.address
-								});
-								modules.blockchain.transactions.processUnconfirmedTransaction(trs, function (err) {
-									if (err) {
-										library.logger("Failed to process unconfirmed transaction", err)
-									}
-									cb(err);
-								});
-							});
-						}, cb);
-					});
-				});
-			});
-		} else {
-			setImmediate(cb);
-		}
-	});
-}
-
 Sync.prototype.onBind = function (_modules) {
 	modules = _modules;
 }
@@ -318,16 +241,15 @@ Sync.prototype.onBlockchainLoaded = function () {
 		});
 	});
 
-	setImmediate(function nextBalanceSync() {
-		library.sequence.add(private.balanceSync, function (err) {
-			err && library.logger("Sync#balanceSync timer", err);
+	// setImmediate(function nextBalanceSync() {
+	// 	library.sequence.add(private.balanceSync, function (err) {
+	// 		err && library.logger("Sync#balanceSync timer", err);
 
-			setTimeout(nextBalanceSync, 30 * 1000)
-		});
-	});
+	// 		setTimeout(nextBalanceSync, 30 * 1000)
+	// 	});
+	// });
 
 	setImmediate(function nextBlockSync() {
-		console.log('nextBlockSync')
 		library.sequence.add(private.blockSync, function (err) {
 			err && library.logger("Sync#blockSync timer", err);
 			setTimeout(nextBlockSync, 10 * 1000)

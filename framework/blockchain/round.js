@@ -43,22 +43,62 @@ private.loop = function (point, cb) {
 	}
 
 	library.sequence.add(function forgeNewBlock(cb) {
-		if (slots.getSlotNumber(currentBlockData.slotTime) == slots.getSlotNumber()) {
-			(async function () {
-				try {
+		(async function () {
+			let isForgeNewBlock = false
+			try {
+				var slotNumber = slots.getSlotNumber(currentBlockData.slotTime)
+				var currentSlotNumber = slots.getSlotNumber()
+				if (slotNumber === currentSlotNumber) {
+					await private.balanceSync(currentBlockData.keypair)
 					await modules.blockchain.blocks.createBlock(currentBlockData.keypair, currentBlockData.slotTime, point)
 					var lastBlock = modules.blockchain.blocks.getLastBlock();
 					library.logger("New dapp block id: " + lastBlock.id + " height: " + lastBlock.height + " via point: " + lastBlock.pointHeight);
-				} catch (e) {
-					library.logger('Failed to create new block: ', e)
 				}
-				modules.blockchain.transactions.clearUnconfirmed()
-				cb()
-			})()
-		} else {
-			setImmediate(cb)
-		}
+			} catch (e) {
+				library.logger('Failed to create new block: ', e)
+			}
+			modules.blockchain.transactions.clearUnconfirmed()
+			cb()
+		})()
 	}, cb)
+}
+
+private.balanceSync = async function balanceSync(keypair) {
+	//console.log('enter balanceSync ------------------------')
+	let transactions = await app.model.Transaction.findAll({
+		condition: {
+			func: 'core.deposit'
+		},
+		fields: [
+			'args'
+		],
+		sort: {
+			height: -1
+		},
+		limit: 1
+	})
+	//console.log('balanceSync found deposit transactions:', transactions)
+	let lastSourceId = null
+	if (transactions && transactions.length) {
+		lastSourceId = transactions[0].args.split(',')[2]
+	}
+	let mainTransactions = await PIFY(modules.api.dapps.getBalanceTransactions)(lastSourceId)
+	if (!mainTransactions || !mainTransactions.length) return
+
+	//console.log('balanceSync mainTransactions:', mainTransactions)
+
+	let localTransactions = mainTransactions.map((mt) => {
+		return modules.logic.transaction.create({
+			func: 'core.deposit',
+			args: [
+				mt.currency,
+				mt.currency === 'XAS' ? mt.amount : mt.amount2,
+				mt.id,
+				modules.blockchain.accounts.generateAddressByPublicKey(mt.senderPublicKey)
+			]
+		}, keypair)
+	})
+	await modules.blockchain.transactions.receiveTransactionsAsync(localTransactions)
 }
 
 private.getState = function (height) {
