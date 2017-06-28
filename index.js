@@ -142,4 +142,6 @@ SandboxWrapper.prototype._onError = function (err) {
 	this.logger.error("dapp[" + this.id + "]", err);
 }
 
+SandboxWrapper.routes = require('./framework/routes.json')
+
 module.exports = SandboxWrapper;
