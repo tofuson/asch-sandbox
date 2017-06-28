@@ -73,6 +73,13 @@ function runDapp(app) {
     })
 
     dapp.on('exit', function (code) {
+        (async () => {
+          try {
+            await app.db.close()
+          } catch (e) {
+            console.log('Failed to close db:', e)
+          }
+        })()
         process.exit(code);
     })
 
@@ -95,6 +102,13 @@ function run2(app) {
     })
 
     dapp.on('exit', function (code) {
+        (async () => {
+          try {
+            await app.db.close()
+          } catch (e) {
+            console.log('Failed to close db:', e)
+          }
+        })()
         process.exit(code);
     })
 
