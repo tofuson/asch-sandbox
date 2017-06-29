@@ -90,6 +90,9 @@ Transactions.prototype.processUnconfirmedTransactionAsync = async function (tran
 	if (!fn) {
 		throw new Error('Contract not found')
 	}
+	if (!transaction.senderId) {
+		transaction.senderId = modules.blockchain.accounts.generateAddressByPublicKey(transaction.senderPublicKey)
+	}
 	let height = modules.blockchain.blocks.getLastBlock().height
 	let bind = {
 		trs: transaction,

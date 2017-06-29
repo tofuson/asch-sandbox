@@ -49,7 +49,8 @@ function runDapp(app) {
                 'extend',
                 'ip',
                 'z-schema',
-                'protocol-buffers'
+                'protocol-buffers',
+                'asch-js'
             ],
             root: [
                 rootDir,

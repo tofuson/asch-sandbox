@@ -126,6 +126,15 @@ Dapps.prototype.getDApp = function (cb) {
 	library.sandbox.sendMessage(message, cb);
 }
 
+Dapps.prototype.submitOutTransfer = function (trs, cb) {
+	var message = {
+		call: "dapps#submitOutTransfer",
+		args: trs
+	};
+
+	library.sandbox.sendMessage(message, cb);
+}
+
 Dapps.prototype.onBind = function (_modules) {
 	modules = _modules;
 }

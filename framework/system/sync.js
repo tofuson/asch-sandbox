@@ -1,7 +1,6 @@
 var bignum = require("bignumber");
 var async = require("async");
 var ip = require("ip");
-var TransactionTypes = require("../helpers/transaction-types.js");
 
 var private = {}, self = null,
 	library = null, modules = null;
@@ -118,128 +117,17 @@ private.loadMultisignatures = function loadMultisignatures(cb) {
 	});
 }
 
-private.withdrawalSync = function withdrawalSync(cb) {
-	modules.blockchain.accounts.getExecutor(function (err, executor) {
-		if (!err && executor.isAuthor) {
-			modules.api.dapps.getWithdrawalLastTransaction(function (err, res) {
-				if (err) {
-					return cb(err);
-				}
-				function send(transactions, cb) {
-					async.eachSeries(transactions, function (transaction, cb) {
-						var address = modules.blockchain.accounts.generateAddressByPublicKey(transaction.senderPublicKey);
-
-						modules.api.dapps.sendWithdrawal({
-							secret: executor.secret,
-							amount: transaction.amount,
-							recipientId: address,
-							transactionId: transaction.id,
-							multisigAccountPublicKey: executor.keypair.publicKey.toString("hex")
-						}, cb);
-					}, cb);
-				}
-
-				if (res.id) {
-					modules.api.sql.select({
-						table: "transactions",
-						"alias": "t",
-						join: [
-							{
-								"type": "inner",
-								"table": "blocks",
-								"alias": "b",
-								"on": {
-									"b.id": "t.blockId",
-								}
-							}
-						],
-						fields: [{ "b.height": "height" }],
-						condition: {
-							"t.type": TransactionTypes.WITHDRAWAL,
-							"t.id": res.id
-						},
-						limit: 1
-					}, { "height": Number }, function (err, res) {
-						if (err || !res.length) {
-							return cb(err);
-						}
-
-						modules.api.sql.select({
-							table: "transactions",
-							"alias": "t",
-							join: [
-								{
-									"type": "inner",
-									"table": "blocks",
-									"alias": "b",
-									"on": {
-										"b.id": "t.blockId",
-									}
-								}
-							],
-							fields: [{ "t.amount": "amount" }, { "t.id": "id" }, { "t.senderPublicKey": "senderPublicKey" }],
-							condition: {
-								"type": TransactionTypes.WITHDRAWAL,
-								"b.height": { $gt: res[0].height }
-							},
-							sort: {
-								"b.height": 1
-							}
-						}, { amount: Number, id: String, senderPublicKey: String }, function (err, transactions) {
-							if (err) {
-								return cb(err);
-							}
-
-							send(transactions, cb);
-						});
-					});
-				} else {
-					modules.api.sql.select({
-						table: "transactions",
-						"alias": "t",
-						join: [
-							{
-								"type": "inner",
-								"table": "blocks",
-								"alias": "b",
-								"on": {
-									"b.id": "t.blockId",
-								}
-							}
-						],
-						fields: [{ "t.amount": "amount" }, { "t.id": "id" }, { "t.senderPublicKey": "senderPublicKey" }],
-						condition: {
-							"type": TransactionTypes.WITHDRAWAL
-						},
-						sort: {
-							"b.height": 1
-						}
-					}, { amount: Number, id: String, senderPublicKey: String }, function (err, transactions) {
-						if (err) {
-							return cb(err);
-						}
-
-						send(transactions, cb);
-					});
-				}
-			});
-		} else {
-			setImmediate(cb);
-		}
-	});
-}
-
 Sync.prototype.onBind = function (_modules) {
 	modules = _modules;
 }
 
 Sync.prototype.onBlockchainLoaded = function () {
-	setImmediate(function nextWithdrawalSync() {
-		library.sequence.add(private.withdrawalSync, function (err) {
-			err && library.logger("Sync#withdrawalSync timer", err);
-			setTimeout(nextWithdrawalSync, 30 * 1000)
-		});
-	});
+	// setImmediate(function nextWithdrawalSync() {
+	// 	library.sequence.add(private.withdrawalSync, function (err) {
+	// 		err && library.logger("Sync#withdrawalSync timer", err);
+	// 		setTimeout(nextWithdrawalSync, 30 * 1000)
+	// 	});
+	// });
 
 	// setImmediate(function nextBalanceSync() {
 	// 	library.sequence.add(private.balanceSync, function (err) {

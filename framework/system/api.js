@@ -71,6 +71,7 @@ Api.prototype.helloworld = function (req, cb) {
 }
 
 Api.prototype.message = function (req, cb) {
+	console.log('on message', req)
 	library.bus.message("message", req.query);
 	cb(null, {});
 }

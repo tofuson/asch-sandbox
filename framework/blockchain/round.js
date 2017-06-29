@@ -1,6 +1,8 @@
 var async = require("async");
 var crypto = require("crypto");
+var AschJS = require("asch-js");
 var slots = require("../helpers/slots.js");
+var OutTransferManager = require("../helpers/outtransfer-manager.js");
 
 var private = {}
 var self = null
@@ -14,6 +16,7 @@ private.cacheDelegates = {
 	delegates: []
 }
 private.keypairs = {}
+private.outTransferManager = null
 
 function Round(cb, _library) {
 	self = this;
@@ -44,12 +47,12 @@ private.loop = function (point, cb) {
 
 	library.sequence.add(function forgeNewBlock(cb) {
 		(async function () {
-			let isForgeNewBlock = false
 			try {
 				var slotNumber = slots.getSlotNumber(currentBlockData.slotTime)
 				var currentSlotNumber = slots.getSlotNumber()
 				if (slotNumber === currentSlotNumber) {
 					await private.balanceSync(currentBlockData.keypair)
+					await private.withdrawalSync(currentBlockData.secret)
 					await modules.blockchain.blocks.createBlock(currentBlockData.keypair, currentBlockData.slotTime, point)
 					var lastBlock = modules.blockchain.blocks.getLastBlock();
 					library.logger("New dapp block id: " + lastBlock.id + " height: " + lastBlock.height + " via point: " + lastBlock.pointHeight);
@@ -101,6 +104,69 @@ private.balanceSync = async function balanceSync(keypair) {
 	await modules.blockchain.transactions.receiveTransactionsAsync(localTransactions)
 }
 
+private.withdrawalSync = async function withdrawalSync(secret) {
+	let pendingOutTransfers = private.outTransferManager.getPending()
+	for (let ot of pendingOutTransfers) {
+		if (ot.signatures.length >= app.meta.unlockDelegates) {
+			modules.api.dapps.submitOutTransfer(ot)
+			private.outTransferManager.setReady(ot.id)
+		}
+	}
+	let lastWithdrawal = await PIFY(modules.api.dapps.getWithdrawalLastTransaction)()
+	console.log('get last withdrawal id', lastWithdrawal)
+	let height = 0
+	if (lastWithdrawal.id) {
+		let lastInnerWithdrawal = await app.model.Transaction.findOne({
+			condition: {
+				id: lastWithdrawal.id
+			},
+			fields: ['height', 'func']
+		})
+		console.log('found last inner withdrawal', lastInnerWithdrawal)
+		if (!lastInnerWithdrawal) {
+			console.log('WARNING last inner withdrawal not found', lastWithdrawal.id)
+			return
+		}
+		height = lastInnerWithdrawal.height
+	}
+	let innerTransactions = await app.model.Transaction.findAll({
+		condition: {
+			func: 'core.withdrawal',
+			height: { $gt: height }
+		},
+		fields: ['id', 'senderPublicKey', 'height', 'args'],
+		sort: {
+			height: 1
+		}
+	})
+	console.log('found inner withdrawal transactions', innerTransactions)
+	let outerTransactions = innerTransactions.filter((t) => {
+		return !private.outTransferManager.has(t.id)
+	}).map((t) => {
+		let [currency, amount] = t.args.split(',')
+		let address = modules.blockchain.accounts.generateAddressByPublicKey(t.senderPublicKey)
+		let ot = AschJS.transfer.createOutTransfer(address, app.meta.transactionId, t.id, currency, amount, secret)
+		ot.signatures = []
+		for (let s of app.config.secrets) {
+			if (s !== secret) {
+				ot.signatures.push(AschJS.transfer.signOutTransfer(ot, s))
+			}
+			if (ot.signatures.length >= app.meta.unlockDelegates) break
+		}
+		return { innerId: t.id, ot: ot }
+	})
+	for (let {ot, innerId} of outerTransactions) {
+		if (ot.signatures.length >= app.meta.unlockDelegates) {
+			modules.api.dapps.submitOutTransfer(ot)
+			private.outTransferManager.addReady(ot, innerId)
+		} else {
+			modules.api.transport.message('pendingOutTransfer', ot)
+			private.outTransferManager.addPending(ot, innerId)
+		}
+	}
+	private.outTransferManager.clear()
+}
+
 private.getState = function (height) {
 	var delegates = self.generateDelegateList(height);
 
@@ -114,7 +180,8 @@ private.getState = function (height) {
 		if (delegateAddress && private.keypairs[delegateAddress]) {
 			return {
 				slotTime: slots.getSlotTime(currentSlot),
-				keypair: private.keypairs[delegateAddress]
+				keypair: private.keypairs[delegateAddress].keypair,
+				secret: private.keypairs[delegateAddress].secret
 			}
 		}
 	}
@@ -168,7 +235,10 @@ Round.prototype.onBind = function (_modules) {
 		let keypair = modules.api.crypto.keypair(app.config.secrets[i])
 		let address = modules.blockchain.accounts.generateAddressByPublicKey(keypair.publicKey)
 		console.log('Forging enable on account: ' + address)
-		private.keypairs[address] = keypair
+		private.keypairs[address] = {
+			keypair,
+			secret: app.config.secrets[i]
+		}
 	}
 }
 
@@ -181,16 +251,36 @@ Round.prototype.onBlockchainLoaded = function () {
 		private.delegates.sort();
 	}
 	slots.setDelegatesNumber(app.meta.delegates.length)
+	private.outTransferManager = new OutTransferManager(app.meta.unlockDelegates)
 }
 
 Round.prototype.onMessage = function (query) {
-	if (query.topic == "point" && private.loaded) {
+	if (!private.loaded) return
+	if (query.topic == 'point') {
 		var block = query.message;
 		private.loop(block, function (err) {
 			if (err) {
 				library.logger("Loop error", err)
 			}
 		});
+	} else if (query.topic == 'pendingOutTransfer') {
+		let ot = query.message
+		if (!private.outTransferManager.has(ot)) {
+			let signature = AschJS.transfer.signOutTransfer(out)
+			private.outTransferManager.addPending(ot)
+			private.outTransferManager.addSignature(ot.id, signature)
+			modules.api.transport.message('otSignature', {
+				id: ot.id,
+				signature: signature
+			})
+		}
+	} else if (query.topic == 'otSignature') {
+		let id = query.message.id
+		let signature = query.message.signature
+		private.outTransferManager.addSignature(id, signature)
+	} else if (query.topic == 'withdrawalCompleted') {
+		let id = query.message.transactionId
+		private.outTransferManager.setReady(id)
 	}
 }
 
