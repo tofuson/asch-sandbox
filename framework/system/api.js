@@ -1,7 +1,11 @@
-var private = {}, self = null,
-    library = null, modules = null;
-    private.apies = {};
-    private.loaded = false;
+var private = {}
+var self = null
+var library = null
+var modules = null
+
+private.apies = {}
+private.appApiHandlers = {}
+private.loaded = false
 
 function Api(cb, _library) {
 	self = this;
@@ -40,7 +44,25 @@ Api.prototype.onBlockchainLoaded = function () {
 		private.apies[route.method + " " + route.path] = private.ns(modules, route.handler);
 	});
 
-	library.sandbox.onMessage(function (message, cb, callback_id) {
+	var appRoutes = app.route.getRoutes()
+	for (let r of appRoutes) {
+		private.appApiHandlers[r.method + ' ' + r.path] = r.handler
+	}
+
+	(async function () {
+		try {
+			for (let r of appRoutes) {
+				console.log('register app interface', r.method, r.path)
+				await PIFY(modules.api.dapps.registerInterface)(r)
+			}
+		} catch (e) {
+			console.log('Failed to register dapp interface', e)
+			process.exit(5)
+			return
+		}
+	})()
+
+	library.sandbox.onMessage(function (message, callback_id, cb) {
 		var handler = private.apies[message.method + " " + message.path];
 		if (handler) {
 			handler(message.query, function (err, response) {
@@ -48,10 +70,17 @@ Api.prototype.onBlockchainLoaded = function () {
 					err = err.toString();
 				}
 
-				cb(err, {response: response}, callback_id);
+				cb(err, {response: response});
 			});
 		} else {
-			cb("API call not found", {}, callback_id);
+			handler = private.appApiHandlers[message.method + " " + message.path]
+			if (!handler) return cb("API call not found")
+			handler(message.query, function (err, response) {
+				if (err) {
+					err = err.toString();
+				}
+				cb(err, {response: response});
+			})
 		}
 	});
 
@@ -64,14 +93,7 @@ Api.prototype.onBlockchainLoaded = function () {
 	});
 }
 
-Api.prototype.helloworld = function (req, cb) {
-	cb(null, {
-		test: "Hello, world!"
-	});
-}
-
 Api.prototype.message = function (req, cb) {
-	console.log('on message', req)
 	library.bus.message("message", req.query);
 	cb(null, {});
 }

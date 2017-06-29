@@ -144,6 +144,34 @@ async function loadContracts(dir) {
     }
 }
 
+async function loadInterfaces(dir) {
+    let interfaceFiles = await helpers.PIFY(fs.readdir)(dir)
+    for (let f of interfaceFiles) {
+        console.log('loading interface', f)
+        require(path.join(dir, f))
+    }
+}
+
+class Route {
+    constructor() {
+        this.routes = []
+    }
+    get(path, handler) {
+        this.routes.push({ path: path, method: 'get', handler: handler })
+    }
+
+    put(path, handler) {
+        this.routes.push({ path: path, method: 'put', handler: handler })
+    }
+
+    post(path, handler) {
+        this.routes.push({ path: path, method: 'post', handler: handler })
+    }
+    getRoutes() {
+        return this.routes
+    }
+}
+
 async function main() {
     global.app = {
         db: null,
@@ -180,11 +208,13 @@ async function main() {
 
     app.sdb = new SmartDB(app)
     app.balances = new BalanceManager(app.sdb)
+    app.route = new Route()
 
     await loadModels(path.join(rootDir, 'model'))
     await loadModels(path.join(dappRootDir, 'model'))
     await loadContracts(path.join(rootDir, 'contract'))
     await loadContracts(path.join(dappRootDir, 'contract'))
+    await loadInterfaces(path.join(dappRootDir, 'interface'))
 
     await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])
 

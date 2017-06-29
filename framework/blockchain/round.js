@@ -125,9 +125,9 @@ private.withdrawalSync = async function withdrawalSync(secret) {
 		console.log('found last inner withdrawal', lastInnerWithdrawal)
 		if (!lastInnerWithdrawal) {
 			console.log('WARNING last inner withdrawal not found', lastWithdrawal.id)
-			return
+		} else {
+			height = lastInnerWithdrawal.height
 		}
-		height = lastInnerWithdrawal.height
 	}
 	let innerTransactions = await app.model.Transaction.findAll({
 		condition: {

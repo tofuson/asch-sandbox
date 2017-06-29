@@ -52,7 +52,7 @@ Sandbox.prototype.processParentMessage = function (data) {
 			}.bind(this);
 			var message = json.message;
 			if (typeof this.messageHandler === "function") {
-				setImmediate(this.messageHandler, message, callback, callback_id);
+				setImmediate(this.messageHandler, message, callback_id, callback);
 			}
 		}
 	}
@@ -67,6 +67,9 @@ Sandbox.prototype.onMessage = function (handler) {
 }
 
 Sandbox.prototype.sendMessage = function (msg, cb) {
+	if (!cb) {
+		cb = function () {}
+	}
 	var callback_id = this._getCallbackCounter();
 	var messageObj = {
 		type: "dapp_call",

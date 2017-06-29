@@ -135,6 +135,18 @@ Dapps.prototype.submitOutTransfer = function (trs, cb) {
 	library.sandbox.sendMessage(message, cb);
 }
 
+Dapps.prototype.registerInterface = function (i, cb) {
+	var message = {
+		call: "dapps#registerInterface",
+		args: {
+			method: i.method,
+			path: i.path
+		}
+	};
+
+	library.sandbox.sendMessage(message, cb);
+}
+
 Dapps.prototype.onBind = function (_modules) {
 	modules = _modules;
 }
