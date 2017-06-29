@@ -26,6 +26,17 @@ private.ns = function (src, path) {
 	return o;
 };
 
+private.applyApiHandler = function (handler, req, cb) {
+	(async () => {
+		try {
+			let response = await handler(req)
+			cb(null, { response: response })
+		} catch (e) {
+			cb(e.toString())
+		}
+	})()
+}
+
 Api.prototype.onBind = function (_modules) {
 	modules = _modules;
 }
@@ -75,12 +86,7 @@ Api.prototype.onBlockchainLoaded = function () {
 		} else {
 			handler = private.appApiHandlers[message.method + " " + message.path]
 			if (!handler) return cb("API call not found")
-			handler(message.query, function (err, response) {
-				if (err) {
-					err = err.toString();
-				}
-				cb(err, {response: response});
-			})
+			private.applyApiHandler(handler, message.query, cb)
 		}
 	});
 
