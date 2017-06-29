@@ -166,6 +166,7 @@ async function main() {
         if (error) throw new Error(error)
     }
     app.registerContract = function (type, name) {
+        if (type < 100) throw new Error('Contract types that small than 100 are reserved')
         app.contractTypeMapping[type] = name
     }
     app.getContractName = function (type) {
@@ -187,9 +188,9 @@ async function main() {
 
     await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])
 
-    app.registerContract(1, 'core.deposit')
-    app.registerContract(2, 'core.withdrawal')
-    app.registerContract(3, 'core.transfer')
+    app.contractTypeMapping[1] = 'core.deposit'
+    app.contractTypeMapping[2] = 'core.withdrawal'
+    app.contractTypeMapping[3] = 'core.transfer'
 
     run2(global.app)
 }
