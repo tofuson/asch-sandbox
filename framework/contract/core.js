@@ -9,6 +9,8 @@ module.exports = {
       return 'Sender is not a delegate'
     }
 
+    // TODO validate src transaction and params
+
     let exists = await app.model.Deposit.exists({ srcId: srcId })
     if (exists) return 'Double deposit'
 

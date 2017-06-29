@@ -189,7 +189,7 @@ async function main() {
         }
     }
     app.validate = function (type, value) {
-        if (!app.validators) throw new Error('Validator not found: ' + type)
+        if (!app.validators[type]) throw new Error('Validator not found: ' + type)
         let error = app.validators[type](value)
         if (error) throw new Error(error)
     }
