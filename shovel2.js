@@ -166,7 +166,7 @@ async function main() {
         if (error) throw new Error(error)
     }
     app.registerContract = function (type, name) {
-        if (type < 100) throw new Error('Contract types that small than 100 are reserved')
+        if (type < 1000) throw new Error('Contract types that small than 1000 are reserved')
         app.contractTypeMapping[type] = name
     }
     app.getContractName = function (type) {
