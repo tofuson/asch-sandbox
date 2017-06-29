@@ -82,7 +82,8 @@ Transactions.prototype.processUnconfirmedTransactionAsync = async function (tran
 		throw new Error('Transaction already confirmed')
 	}
 
-	let [mod, func] = transaction.func.split('.')
+	let name = app.getContractName(transaction.type)
+	let [mod, func] = name.split('.')
 	if (!mod || !func) {
 		throw new Error('Invalid transaction function')
 	}
@@ -155,14 +156,15 @@ Transactions.prototype.addTransactionUnsigned = function (req, cb) {
 			fee: {
 				type: 'string'
 			},
-			func: {
-				type: 'string'
+			type: {
+				type: 'integer',
+				min: 1
 			},
 			args: {
 				type: 'array'
 			}
 		},
-		required: ['secret', 'fee', 'func']
+		required: ['secret', 'fee', 'type']
 	})
 	if (!valid) {
 		return setImmediate(cb, library.validator.getLastError().details[0].message)

@@ -322,9 +322,8 @@ Blocks.prototype.saveBlock = function (block) {
 		let trs = block.transactions[i]
 		trs.height = block.height
 
-		// TODO encode array
 		if (trs.args) {
-			trs.args = trs.args.join(',')
+			trs.args = JSON.stringify(trs.args)
 		}
 		app.sdb.create('Transaction', trs)
 	}
@@ -451,8 +450,8 @@ Blocks.prototype.applyBlock = async function (block, options) {
 			if (appliedTransactions[transaction.id]) {
 				throw new Error("Duplicate transaction in block: " + transaction.id)
 			}
-
-			let [mod, func] = transaction.func.split('.')
+			let name = app.getContractName(transaction.type)
+			let [mod, func] = name.split('.')
 			if (!mod || !func) {
 				throw new Error('Invalid transaction function')
 			}
@@ -654,7 +653,7 @@ Blocks.prototype.getBlocksAfter = function (req, cb) {
 		let firstHeight = blocks[0].height
 		for (let i in transactions) {
 			let t = transactions[i]
-			t.args = t.args.split(',')
+			t.args = t.args ? JSON.parse(t.args) : []
 			let h = t.height
 			let b = blocks[h - firstHeight]
 			if (!!b) {

@@ -21,7 +21,7 @@ Transaction.prototype.create = function (data, keypair, secondKeypair) {
     senderPublicKey: keypair.publicKey.toString('hex'),
 		senderId: modules.blockchain.accounts.generateAddressByPublicKey(keypair.publicKey),
     timestamp: slots.getTime(),
-    func: data.func,
+    type: data.type,
 		args: data.args
   };
   trs.signature = modules.api.crypto.sign(keypair, this.getBytes(trs))
@@ -43,7 +43,7 @@ Transaction.prototype.getBytes = function (trs, skipSignature) {
 		for (var i = 0; i < senderPublicKeyBuffer.length; i++) {
 			bb.writeByte(senderPublicKeyBuffer[i]);
 		}
-		bb.writeString(trs.func)
+		bb.writeInt(trs.type)
 		for (let i = 0; i < trs.args.length; ++i) {
 			bb.writeString(trs.args[i])
 		}
@@ -57,6 +57,7 @@ Transaction.prototype.getBytes = function (trs, skipSignature) {
 
 		bb.flip()
 	} catch (e) {
+		console.log(trs)
 		throw Error(e.toString())
 	}
 	return bb.toBuffer()
@@ -84,7 +85,7 @@ Transaction.prototype.verify = function (trs) { //inheritance
 		throw new Error("Invalid timestamp")
 	}
 
-	if (!trs.func) {
+	if (!trs.type) {
 		throw new Error("Invalid function")
 	}
 
@@ -108,8 +109,8 @@ Transaction.prototype.save = function (trs, cb) {
 			fee: trs.fee,
 			signature: trs.signature,
 			height: trs.height,
-			func: trs.func,
-			args: trs.args.join(',')
+			type: trs.type,
+			args: JSON.stringify(trs.args)
 		}
 	}, cb)
 }
@@ -172,7 +173,7 @@ Transaction.prototype.dbRead = function (row) {
 		fee: row.t_fee,
 		signature: row.t_signature,
 		blockId: row.t_blockId,
-		func: row.t_func,
+		type: row.t_type,
 		args: JSON.parse(row.t_args)
 	}
 

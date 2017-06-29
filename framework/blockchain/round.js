@@ -70,7 +70,7 @@ private.balanceSync = async function balanceSync(keypair) {
 	//console.log('enter balanceSync ------------------------')
 	let transactions = await app.model.Transaction.findAll({
 		condition: {
-			func: 'core.deposit'
+			type: 1 // core.deposit
 		},
 		fields: [
 			'args'
@@ -83,7 +83,7 @@ private.balanceSync = async function balanceSync(keypair) {
 	//console.log('balanceSync found deposit transactions:', transactions)
 	let lastSourceId = null
 	if (transactions && transactions.length) {
-		lastSourceId = transactions[0].args.split(',')[2]
+		lastSourceId = JSON.parse(transactions[0].args)[2]
 	}
 	let mainTransactions = await PIFY(modules.api.dapps.getBalanceTransactions)(lastSourceId)
 	if (!mainTransactions || !mainTransactions.length) return
@@ -92,7 +92,7 @@ private.balanceSync = async function balanceSync(keypair) {
 
 	let localTransactions = mainTransactions.map((mt) => {
 		return modules.logic.transaction.create({
-			func: 'core.deposit',
+			type: 1,// core.deposit
 			args: [
 				mt.currency,
 				mt.currency === 'XAS' ? mt.amount : mt.amount2,
@@ -120,7 +120,7 @@ private.withdrawalSync = async function withdrawalSync(secret) {
 			condition: {
 				id: lastWithdrawal.id
 			},
-			fields: ['height', 'func']
+			fields: ['height', 'type']
 		})
 		console.log('found last inner withdrawal', lastInnerWithdrawal)
 		if (!lastInnerWithdrawal) {
@@ -131,7 +131,7 @@ private.withdrawalSync = async function withdrawalSync(secret) {
 	}
 	let innerTransactions = await app.model.Transaction.findAll({
 		condition: {
-			func: 'core.withdrawal',
+			type: 2, // core.withdrawal
 			height: { $gt: height }
 		},
 		fields: ['id', 'senderPublicKey', 'height', 'args'],
@@ -143,7 +143,7 @@ private.withdrawalSync = async function withdrawalSync(secret) {
 	let outerTransactions = innerTransactions.filter((t) => {
 		return !private.outTransferManager.has(t.id)
 	}).map((t) => {
-		let [currency, amount] = t.args.split(',')
+		let [currency, amount] = JSON.parse(t.args)
 		let address = modules.blockchain.accounts.generateAddressByPublicKey(t.senderPublicKey)
 		let ot = AschJS.transfer.createOutTransfer(address, app.meta.transactionId, t.id, currency, amount, secret)
 		ot.signatures = []

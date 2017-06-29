@@ -134,38 +134,38 @@ module.exports = function (options, cb) {
 			cb(null, sequence);
 		},
 
-		protobuf: function (cb) {
-			var protocolBuffers = require("protocol-buffers");
-			var schema = `
-				message Block {
-					required string id = 1;
-					required int32 timestamp = 2;
-					required int64 height = 3;
-					required int32 payloadLength = 4;
-					required bytes payloadHash = 5;
-					optional string prevBlockId = 6;
-					optional string pointId = 7;
-					optional int64 pointHeight = 8;
-					required bytes delegate = 9;
-					optional bytes signature = 10;
-					required int32 count = 11;
-					repeated Transaction transactions = 12;
-				}
+		// protobuf: function (cb) {
+		// 	var protocolBuffers = require("protocol-buffers");
+		// 	var schema = `
+		// 		message Block {
+		// 			required string id = 1;
+		// 			required int32 timestamp = 2;
+		// 			required int64 height = 3;
+		// 			required int32 payloadLength = 4;
+		// 			required bytes payloadHash = 5;
+		// 			optional string prevBlockId = 6;
+		// 			optional string pointId = 7;
+		// 			optional int64 pointHeight = 8;
+		// 			required bytes delegate = 9;
+		// 			optional bytes signature = 10;
+		// 			required int32 count = 11;
+		// 			repeated Transaction transactions = 12;
+		// 		}
 
-				message Transaction {
-					required string id = 1;
-					required int32 timestamp = 2;
-					required bytes senderPublicKey = 3;
-					required bytes signature = 4;
-					optional string fee = 5;
-					required string func = 6;
-					repeated string args = 7;
-				}
-			`
-			cb(null, protocolBuffers(schema));
-		},
+		// 		message Transaction {
+		// 			required string id = 1;
+		// 			required int32 timestamp = 2;
+		// 			required bytes senderPublicKey = 3;
+		// 			required bytes signature = 4;
+		// 			optional string fee = 5;
+		// 			required string func = 6;
+		// 			repeated string args = 7;
+		// 		}
+		// 	`
+		// 	cb(null, protocolBuffers(schema));
+		// },
 
-		modules: ["sandbox", "logger", "bus", "sequence", "validator", "protobuf", function (cb, scope) {
+		modules: ["sandbox", "logger", "bus", "sequence", "validator", function (cb, scope) {
 			var lib = require("./modules.full.json");
 			var tasks = [];
 			Object.keys(lib).forEach(function (path) {

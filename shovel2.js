@@ -152,7 +152,8 @@ async function main() {
         model: {},
         contract: {},
         rootDir: dappRootDir,
-        config: require(path.join(dappRootDir, 'config.json'))
+        config: require(path.join(dappRootDir, 'config.json')),
+        contractTypeMapping: {}
     }
     app.validators = {
         amount: function (value) {
@@ -163,6 +164,12 @@ async function main() {
         if (!app.validators) throw new Error('Validator not found: ' + type)
         let error = app.validators[type](value)
         if (error) throw new Error(error)
+    }
+    app.registerContract = function (type, name) {
+        app.contractTypeMapping[type] = name
+    }
+    app.getContractName = function (type) {
+        return app.contractTypeMapping[type]
     }
     app.db = new ORM('', '', '', {
         dialect: 'sqlite',
@@ -179,6 +186,11 @@ async function main() {
     await loadContracts(path.join(dappRootDir, 'contract'))
 
     await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])
+
+    app.registerContract(1, 'core.deposit')
+    app.registerContract(2, 'core.withdrawal')
+    app.registerContract(3, 'core.transfer')
+
     run2(global.app)
 }
 

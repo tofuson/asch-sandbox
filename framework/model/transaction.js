@@ -39,9 +39,8 @@ module.exports = {
       not_null: true
     },
     {
-      name: 'func',
-      type: 'String',
-      length: 256,
+      name: 'type',
+      type: 'Number',
       not_null: true
     },
     {
