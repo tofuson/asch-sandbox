@@ -82,39 +82,23 @@ Transactions.prototype.processUnconfirmedTransactionAsync = async function (tran
 		throw new Error('Transaction already confirmed')
 	}
 
-	let name = app.getContractName(transaction.type)
-	let [mod, func] = name.split('.')
-	if (!mod || !func) {
-		throw new Error('Invalid transaction function')
-	}
-	let fn = app.contract[mod][func]
-	if (!fn) {
-		throw new Error('Contract not found')
-	}
 	if (!transaction.senderId) {
 		transaction.senderId = modules.blockchain.accounts.generateAddressByPublicKey(transaction.senderPublicKey)
 	}
 	let height = modules.blockchain.blocks.getLastBlock().height
-	let bind = {
-		trs: transaction,
-		block: {
-			height: height,
-			delegate: modules.blockchain.round.getCurrentDelegate(height)
-		}
+
+	let	block = {
+		height: height,
+		delegate: modules.blockchain.round.getCurrentDelegate(height)
 	}
 
-	app.sdb.beginTransaction()
 	try {
-		let error = await fn.apply(bind, transaction.args)
-		if (error) {
-			throw new Error(error)
-		}
+		await modules.logic.transaction.apply(transaction, block)
 	} catch (e) {
 		app.sdb.rollbackTransaction()
-		throw new Error('Apply transaction exception: ' + e)
+		throw new Error('Apply transaction error: ' + e)
 	}
 
-	app.sdb.commitTransaction()
 	self.pool.add(transaction)
 	return transaction
 }

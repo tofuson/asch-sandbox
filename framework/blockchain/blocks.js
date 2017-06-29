@@ -2,7 +2,9 @@ var crypto = require("crypto");
 var path = require("path");
 var async = require("async");
 var extend = require("extend");
+var bignum = require("bignumber");
 var slots = require("../helpers/slots.js");
+var FeeStat = require("../helpers/fee-stat.js");
 
 var private = {}, self = null,
 	library = null, modules = null;
@@ -215,6 +217,20 @@ private.rollbackUntilBlock = function (block, cb) {
 	});
 }
 
+Blocks.prototype.processFee = function (block) {
+	if (!block || !block.transactions) return
+	let feeStat = new FeeStat
+	for (let t of block.transactions) {
+		let feeInfo = app.getFee(t.type) || app.defaultFee
+		feeStat.add(feeInfo.currency, t.fee)
+	}
+	let delegateAddress = modules.blockchain.accounts.generateAddressByPublicKey(block.delegate)
+	feeStat.getFees().forEach((totalFee, currency) => {
+		console.log('------------', delegateAddress, currency, totalFee.toString())
+		app.balances.increase(delegateAddress, currency, totalFee.toString())
+	})
+}
+
 Blocks.prototype.processBlock = async function (block, options) {
 	//library.logger('processBlock block', block)
 	//library.logger('processBlock options', options)
@@ -240,6 +256,7 @@ Blocks.prototype.processBlock = async function (block, options) {
 		}
 	} else {
 		try {
+			self.processFee(block)
 			self.saveBlock(block)
 			await app.sdb.commitBlock()
 		} catch (e) {
@@ -439,7 +456,6 @@ Blocks.prototype.createBlock = async function (keypair, timestamp, point, cb) {
 Blocks.prototype.applyBlock = async function (block, options) {
 	// console.log('enter applyblock')
 	let appliedTransactions = {}
-	let fee = 0
 
 	try {
 		app.sdb.beginBlock()
@@ -450,34 +466,13 @@ Blocks.prototype.applyBlock = async function (block, options) {
 			if (appliedTransactions[transaction.id]) {
 				throw new Error("Duplicate transaction in block: " + transaction.id)
 			}
-			let name = app.getContractName(transaction.type)
-			let [mod, func] = name.split('.')
-			if (!mod || !func) {
-				throw new Error('Invalid transaction function')
-			}
-			let fn = app.contract[mod][func]
-			if (!fn) {
-				throw new Error('Contract not found')
-			}
-			let bind = {
-				trs: transaction,
-				block: block
-			}
-
-			app.sdb.beginTransaction()
-			let error = await fn.apply(bind, transaction.args)
-			if (error) {
-				throw new Error('Failed to apply transaction: ' + error)
-			}
-
-			app.sdb.commitTransaction()
+			await modules.logic.transaction.apply(transaction, block)
 			// TODO not just remove, should mark as applied
 			// modules.blockchain.transactions.removeUnconfirmedTransaction(transaction.id)
-			appliedTransactions[transaction.id] = transaction;
-			fee += transaction.fee;
+			appliedTransactions[transaction.id] = transaction
 		}
 
-		// TODO process fee
+		self.processFee(block)
 
 		self.saveBlock(block)
 

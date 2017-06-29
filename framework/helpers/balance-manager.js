@@ -15,6 +15,7 @@ class BalanceManager {
   }
 
   increase(address, currency, amount) {
+    if (bignum(amount).eq(0)) return
     let cond = {
       address: address,
       currency: currency

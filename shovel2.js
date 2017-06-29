@@ -140,7 +140,9 @@ async function loadContracts(dir) {
         let contractName = changeCase.snakeCase(basename)
         let fullpath = path.join(dir, contractFile)
         let contract = require(fullpath)
-        app.contract[contractName] = contract
+        if (contractFile !== 'index.js') {
+            app.contract[contractName] = contract
+        }
     }
 }
 
@@ -181,7 +183,12 @@ async function main() {
         contract: {},
         rootDir: dappRootDir,
         config: require(path.join(dappRootDir, 'config.json')),
-        contractTypeMapping: {}
+        contractTypeMapping: {},
+        feeMapping: {},
+        defaultFee: {
+            currency: 'XAS',
+            min: '10000000'
+        }
     }
     app.validators = {
         amount: function (value) {
@@ -200,6 +207,23 @@ async function main() {
     app.getContractName = function (type) {
         return app.contractTypeMapping[type]
     }
+
+    app.registerFee = function (type, min, currency) {
+        app.feeMapping[type] = {
+            currency: currency || app.defaultFee.currency,
+            min: min
+        }
+    }
+    app.getFee = function (type) {
+        return app.feeMapping[type]
+    }
+    app.setDefaultFee = function (min, currency) {
+        app.defajultFee = {
+            currency: currency,
+            min: min
+        }
+    }
+
     app.db = new ORM('', '', '', {
         dialect: 'sqlite',
         storage: path.join(dappRootDir, 'blockchain.db'),

@@ -89,13 +89,48 @@ Transaction.prototype.verify = function (trs) { //inheritance
 		throw new Error("Invalid function")
 	}
 
-	//verify signature
 	try {
 		var valid = self.verifySignature(trs, trs.senderPublicKey, trs.signature)
 	} catch (e) {
 		throw new Error('verify signature exception: ' + e)
 	}
 	return valid
+}
+
+Transaction.prototype.apply = async function (transaction, block) {
+	if (block.height !== 1) {
+		let feeInfo = app.getFee(transaction.type) || app.defaultFee
+		if (bignum(transaction.fee).lt(feeInfo.min)) {
+			throw new Error('Invalid transaction fee')
+		}
+		let balance = app.balances.get(transaction.senderId, feeInfo.currency)
+		if (balance.lt(transaction.fee)) {
+			throw new Error('Insufficient balance')
+		}
+		app.balances.decrease(transaction.senderId, feeInfo.currency, transaction.fee)
+	}
+
+	let name = app.getContractName(transaction.type)
+	let [mod, func] = name.split('.')
+	if (!mod || !func) {
+		throw new Error('Invalid transaction function')
+	}
+	let fn = app.contract[mod][func]
+	if (!fn) {
+		throw new Error('Contract not found')
+	}
+	let bind = {
+		trs: transaction,
+		block: block
+	}
+
+	app.sdb.beginTransaction()
+	let error = await fn.apply(bind, transaction.args)
+	if (error) {
+		throw new Error(error)
+	}
+
+	app.sdb.commitTransaction()
 }
 
 Transaction.prototype.save = function (trs, cb) {
