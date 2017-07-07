@@ -240,6 +240,7 @@ async function main() {
     await loadModels(path.join(dappRootDir, 'model'))
     await loadContracts(path.join(rootDir, 'contract'))
     await loadContracts(path.join(dappRootDir, 'contract'))
+    await loadInterfaces(path.join(rootDir, 'interface'))
     await loadInterfaces(path.join(dappRootDir, 'interface'))
 
     await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])

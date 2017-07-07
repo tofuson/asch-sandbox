@@ -8,6 +8,12 @@ class Model {
     this.db = db
     this.fieldsType = {}
     this.allFields = []
+    if (!schema.tableFields && schema.fields) {
+      schema.tableFields = schema.fields
+    }
+    if (!schema.table && schema.name) {
+      schema.table = schema.name
+    }
     for (let i in schema.tableFields) {
       let field = schema.tableFields[i]
       this.allFields.push(field.name)
