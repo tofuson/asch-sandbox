@@ -131,6 +131,9 @@ Transactions.prototype.addTransaction = function (req, cb) {
 
 Transactions.prototype.addTransactionUnsigned = function (req, cb) {
 	let query = req.query
+	if (query.type) {
+		query.type = Number(query.type)
+	}
 	let valid = library.validator.validate(query, {
 		type: 'object',
 		properties: {

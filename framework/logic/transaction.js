@@ -17,7 +17,7 @@ function Transaction(cb, _library) {
 
 Transaction.prototype.create = function (data, keypair, secondKeypair) {
 	var trs = {
-    fee: '0',
+    fee: data.fee,
     senderPublicKey: keypair.publicKey.toString('hex'),
 		senderId: modules.blockchain.accounts.generateAddressByPublicKey(keypair.publicKey),
     timestamp: slots.getTime(),

@@ -243,24 +243,49 @@ Accounts.prototype.onBind = function (_modules) {
 	modules = _modules;
 }
 
-Accounts.prototype.open = function (query, cb) {
+Accounts.prototype.login = function (req, cb) {
+	var query = req.query
 	if (!query.secret) {
 		return cb('secret should not be empty');
 	}
-	var keypair = modules.api.crypto.keypair(query.secret);
-	var address = self.generateAddressByPublicKey(keypair.publicKey.toString("hex"));
-	var account = private.getAccount(address);
 
-	if (!account) {
-		account = private.addAccount({
-			address: address,
-			publicKey: keypair.publicKey.toString("hex")
-		});
-	} else {
-		account.publicKey = keypair.publicKey.toString("hex");
+	(async () => {
+		try {
+			var keypair = modules.api.crypto.keypair(query.secret);
+			var address = self.generateAddressByPublicKey(keypair.publicKey.toString("hex"));
+			var balances = await app.model.Balance.findAll({
+				condition: {address: address},
+				fields: ['currency', 'balance']
+			})
+			var account = {
+				address: address,
+				publicKey: keypair.publicKey.toString('hex'),
+				balances: balances
+			}
+			cb(null, { account: account });
+		} catch (e) {
+			cb('Server error: ' + e)
+		}
+	})()
+}
+
+Accounts.prototype.getBalances = function (req, cb) {
+	if (!req.params || !req.params.address) {
+		return cb('Address should not be empty');
 	}
 
-	cb(null, { account: account });
+	(async () => {
+		try {
+			var address = req.params.address
+			var balances = await app.model.Balance.findAll({
+				condition: {address: address},
+				fields: ['currency', 'balance']
+			})
+			cb(null, { balances: balances });
+		} catch (e) {
+			cb('Server error: ' + e)
+		}
+	})()
 }
 
 Accounts.prototype.open2 = function (query, cb) {

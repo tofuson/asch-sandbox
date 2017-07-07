@@ -5,6 +5,16 @@
 		"handler": "system.api.message"
 	},
 	{
+		"path": "/login",
+		"method": "post",
+		"handler": "blockchain.accounts.login"
+	},
+	{
+		"path": "/balances/:address",
+		"method": "get",
+		"handler": "blockchain.accounts.getBalances"
+	},
+	{
 		"path": "/transactions/signed",
 		"method": "put",
 		"handler": "blockchain.transactions.addTransaction"
