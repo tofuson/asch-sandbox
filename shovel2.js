@@ -1,5 +1,6 @@
 var fs = require('fs')
 var path = require('path')
+var EventEmitter = require('events').EventEmitter
 var NodeVM = require('./vm2').NodeVM
 //var Sequelize = require('sequelize')
 var changeCase = require('change-case')
@@ -233,6 +234,7 @@ async function main() {
     app.sdb = new SmartDB(app)
     app.balances = new BalanceManager(app.sdb)
     app.route = new Route()
+    app.events = new EventEmitter()
 
     await loadModels(path.join(rootDir, 'model'))
     await loadModels(path.join(dappRootDir, 'model'))

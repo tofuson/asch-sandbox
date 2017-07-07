@@ -55,6 +55,7 @@ private.loop = function (point, cb) {
 					await private.withdrawalSync(currentBlockData.secret)
 					await modules.blockchain.blocks.createBlock(currentBlockData.keypair, currentBlockData.slotTime, point)
 					var lastBlock = modules.blockchain.blocks.getLastBlock();
+					app.events.emit('newBlock', lastBlock)
 					library.logger("New dapp block id: " + lastBlock.id + " height: " + lastBlock.height + " via point: " + lastBlock.pointHeight);
 				}
 			} catch (e) {
