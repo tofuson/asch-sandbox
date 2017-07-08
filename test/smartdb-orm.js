@@ -5,6 +5,7 @@ let chai = require('chai')
 let SmartDB = require('../framework/helpers/smartdb.js')
 let ORM = require('../framework/helpers/orm.js')
 let BalanceManager = require('../framework/helpers/balance-manager.js')
+var AutoIncrement = require('../framework/helpers/auto-increment')
 
 const DB_FILE = path.join('/tmp', 'blockchain.db')
 const USER1 = {
@@ -65,6 +66,10 @@ describe('smartdb-orm', () => {
     let Balance = app.db.define('balance', require('../framework/model/balance'), { timestamps: false })
     app.model.Balance = Balance
     await Balance.sync()
+
+    let Variable = app.db.define('variable', require('../framework/model/variable'), { timestamps: false })
+    app.model.Variable = Variable
+    await Variable.sync()
   })
 
   after(async () => {
@@ -174,6 +179,31 @@ describe('smartdb-orm', () => {
     assert.equal(obj.address, B1.address)
     assert.equal(obj.currency, B1.currency)
     assert.equal(obj.balance, '500')
+  })
+
+  it.only('test auto increment id', async() => {
+    let sdb = new SmartDB(app)
+    let autoID = new AutoIncrement(sdb)
+    await sdb.load('Variable', ['value'], ['key'])
+
+    sdb.beginBlock()
+    sdb.beginTransaction()
+    assert.equal(autoID.get('test_id'), '0')
+    assert.equal(autoID.increment('test_id'), '1')
+    assert.equal(autoID.increment('test_id'), '2')
+    sdb.rollbackTransaction()
+    assert.equal(autoID.get('test_id'), '0')
+
+    sdb.beginTransaction()
+    assert.equal(autoID.increment('test_id_2'), '1')
+    assert.equal(autoID.increment('test_id_2'), '2')
+    sdb.commitTransaction()
+    await sdb.commitBlock()
+    assert.equal(autoID.get('test_id_2'), '2')
+
+    let dbItem = await app.model.Variable.findOne({ key: 'test_id_2' })
+    assert.notEqual(dbItem, null)
+    assert.equal(dbItem.value, '2')
   })
 
   it.skip('benchmark', async () => {

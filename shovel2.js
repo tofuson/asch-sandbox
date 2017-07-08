@@ -9,6 +9,7 @@ var amountHelper = require('./framework/helpers/amount')
 var ORM = require('./framework/helpers/orm')
 var SmartDB = require('./framework/helpers/smartdb')
 var BalanceManager = require('./framework/helpers/balance-manager')
+var AutoIncrement = require('./framework/helpers/auto-increment')
 
 var rootDir = path.join(__dirname, 'framework')
 var entryFile = path.join(rootDir, 'index.js')
@@ -233,6 +234,7 @@ async function main() {
 
     app.sdb = new SmartDB(app)
     app.balances = new BalanceManager(app.sdb)
+    app.autoID = new AutoIncrement(app.sdb)
     app.route = new Route()
     app.events = new EventEmitter()
 
@@ -244,6 +246,7 @@ async function main() {
     await loadInterfaces(path.join(dappRootDir, 'interface'))
 
     await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])
+    await app.sdb.load('Variable', ['value'], ['key'])
 
     app.contractTypeMapping[1] = 'core.deposit'
     app.contractTypeMapping[2] = 'core.withdrawal'
