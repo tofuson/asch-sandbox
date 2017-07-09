@@ -2,6 +2,13 @@ let jsonSql = require('json-sql')({ separatedValues: false })
 let dblite = require('./dblite')
 let PIFY = require('./index').PIFY
 
+const JOIN_TRS_FIELDS = ['t.timestamp', 't.type', 't.height']
+const JOIN_FIELDS_TYPE = {
+  't.timestamp': Number,
+  't.type': Number,
+  't.height': Number
+}
+
 class Model {
   constructor(schema, db) {
     this.schema = schema
@@ -45,15 +52,20 @@ class Model {
       let newItem = {}
       for (let i = 0; i < row.length; ++i) {
         let fieldName = fields[i]
-        newItem[fieldName] = this.fieldsType[fieldName](row[i])
+        if (JOIN_FIELDS_TYPE[fieldName]) {
+          newItem[fieldName.split('.').join('_')] = JOIN_FIELDS_TYPE[fieldName](row[i])
+        } else {
+          newItem[fieldName] = this.fieldsType[fieldName](row[i])
+        }
       }
       return newItem
     })
   }
 
   async findAll(options) {
+    options = options || {}
     let fields = options.fields || this.allFields
-    let sql = jsonSql.build({
+    let queryOptions = {
       type: 'select',
       table: this.schema.table,
       condition: options.condition,
@@ -61,23 +73,51 @@ class Model {
       limit: options.limit,
       offset: options.offset,
       sort: options.sort
-    }).query
+    }
+    if (this.allFields.indexOf('tid') !== -1) {
+      queryOptions.fields = fields.concat(JOIN_TRS_FIELDS)
+      let joinCondition = {}
+      joinCondition[this.schema.table + '.tid'] = 't.id'
+      queryOptions.join = [
+        {
+          type: 'inner',
+          table: 'transactions',
+          alias: 't',
+          on: joinCondition
+        }
+      ]
+    }
+    let sql = jsonSql.build(queryOptions).query
     let results = await this.db.query(sql)
-    return this.parseRows(fields, results)
+    return this.parseRows(queryOptions.fields, results)
   }
 
   async findOne(options) {
     let fields = options.fields || this.allFields
-    let sql = jsonSql.build({
+    let queryOptions = {
       type: 'select',
       table: this.schema.table,
       fields: fields,
       condition: options.condition
-    }).query
+    }
+    if (this.allFields.indexOf('tid') !== -1) {
+      queryOptions.fields = fields.concat(JOIN_TRS_FIELDS)
+      let joinCondition = {}
+      joinCondition[this.schema.table + '.tid'] = 't.id'
+      queryOptions.join = [
+        {
+          type: 'inner',
+          table: 'transactions',
+          alias: 't',
+          on: joinCondition
+        }
+      ]
+    }
+    let sql = jsonSql.build(queryOptions).query
     let results = await this.db.query(sql)
     // console.log('findOne', sql, results)
     if (!results || results.length === 0) return null
-    return this.parseRows(fields, results)[0]
+    return this.parseRows(queryOptions.fields, results)[0]
   }
 
   create(values) {
@@ -101,7 +141,7 @@ class Model {
       fields: ['count(*)'],
       condition: condition
     }).query
-    sql  = sql.replace(/"/g, '')
+    sql = sql.replace(/"/g, '')
     let results = await this.db.query(sql)
     return Number(results[0][0])
   }

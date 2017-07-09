@@ -11,7 +11,7 @@ class FeePool {
     this.round = round
   }
 
-  add(currency, amount) {    
+  add(currency, amount) {
     let cond = {
       round: this.round,
       currency: currency

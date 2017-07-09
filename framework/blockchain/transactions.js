@@ -77,6 +77,8 @@ Transactions.prototype.processUnconfirmedTransactionAsync = async function (tran
 		throw new Error('Invalid transaction signature')
 	}
 
+	// TODO reduce fee from sender balance
+
 	let exists = await app.model.Transaction.exists({ id: transaction.id })
 	if (exists) {
 		throw new Error('Transaction already confirmed')
