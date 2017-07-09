@@ -4,7 +4,6 @@ var async = require("async");
 var extend = require("extend");
 var bignum = require("bignumber");
 var slots = require("../helpers/slots.js");
-var FeeStat = require("../helpers/fee-stat.js");
 
 var private = {}, self = null,
 	library = null, modules = null;
@@ -219,16 +218,10 @@ private.rollbackUntilBlock = function (block, cb) {
 
 Blocks.prototype.processFee = function (block) {
 	if (!block || !block.transactions) return
-	let feeStat = new FeeStat
 	for (let t of block.transactions) {
 		let feeInfo = app.getFee(t.type) || app.defaultFee
-		feeStat.add(feeInfo.currency, t.fee)
+		app.feePool.add(feeInfo.currency, t.fee)
 	}
-	let delegateAddress = modules.blockchain.accounts.generateAddressByPublicKey(block.delegate)
-	feeStat.getFees().forEach((totalFee, currency) => {
-		console.log('------------', delegateAddress, currency, totalFee.toString())
-		app.balances.increase(delegateAddress, currency, totalFee.toString())
-	})
 }
 
 Blocks.prototype.processBlock = async function (block, options) {
@@ -254,27 +247,64 @@ Blocks.prototype.processBlock = async function (block, options) {
 			library.logger('Failed to apply block: ' + e)
 			throw e
 		}
-	} else {
-		try {
-			self.processFee(block)
-			self.saveBlock(block)
-			await app.sdb.commitBlock()
-		} catch (e) {
-			console.log('save block error: ' + e)
-			app.sdb.rollbackBlock()
-			throw new Error('Failed to save block: ' + e)
-		}
+	}
+	try {
+		self.processFee(block)
+		self.saveBlock(block)
+		await self.applyRound(block)
+		await app.sdb.commitBlock()
+	} catch (e) {
+		console.log('save block error: ', e)
+		app.sdb.rollbackBlock()
+		throw new Error('Failed to save block: ' + e)
 	}
 	if (options.broadcast) {
 		modules.api.transport.message('block', block)
 	}
-	console.log('Block applied correctly with ' + block.count +' transactions')
+	console.log('Block applied correctly with ' + block.count + ' transactions')
 	self.setLastBlock(block)
+}
+
+Blocks.prototype.applyRound = async function (block) {
+	// TODO process delegate change
+	let delegates = app.meta.delegates
+	if (block.height % delegates.length !== 0) return
+	console.log('----------------------on round end-----------------------')
+	//console.log('app.delegate.length', delegates.length)
+
+	let distributedFees = new Map
+	let distributedFeeRemain = new Map
+	let fees = app.feePool.getFees()
+	console.log('fees', fees)
+	fees.forEach((totalFee, currency) => {
+		let average = bignum(totalFee).div(delegates.length).floor()
+		distributedFees.set(currency, average.toString())
+		let remain = bignum(totalFee).sub(average.mul(delegates.length))
+		if (remain.gt(0)) {
+			distributedFeeRemain.set(currency, remain.toString())
+		}
+	})
+	console.log('distributes', distributedFees, distributedFeeRemain)
+	for (let i = 0; i < delegates.length; ++i) {
+		let address = modules.blockchain.accounts.generateAddressByPublicKey(delegates[i])
+		distributedFees.forEach((amount, currency) => {
+			console.log('apply round distributing fee', address, currency, amount)
+			app.balances.increase(address, currency, amount)
+		})
+		if (i === delegates.length - 1) {
+			distributedFeeRemain.forEach((amount, currency) => {
+				// console.log('apply round distributing fee remain', address, currency, amount)
+				app.balances.increase(address, currency, amount)
+			})
+		}
+	}
 }
 
 Blocks.prototype.setLastBlock = function (block) {
 	// console.log('Blocks#setLastBlock', block)
 	private.lastBlock = block
+		// TODO process delegates change
+	app.feePool.setRound(Math.floor(block.height / app.meta.delegates.length))
 }
 
 Blocks.prototype.applyBatchBlock = function (blocks, cb) {
@@ -471,12 +501,6 @@ Blocks.prototype.applyBlock = async function (block, options) {
 			// modules.blockchain.transactions.removeUnconfirmedTransaction(transaction.id)
 			appliedTransactions[transaction.id] = transaction
 		}
-
-		self.processFee(block)
-
-		self.saveBlock(block)
-
-		await app.sdb.commitBlock()
 	} catch (e) {
 		library.logger('apply block error: ' + e)
 		app.sdb.rollbackBlock()
@@ -521,28 +545,28 @@ Blocks.prototype.loadBlocksOffset = function (limit, offset, cb) {
 
 Blocks.prototype.findCommon = function (req, cb) {
 	let query = req.query
-	(async () => {
-		try {
-			let blocks = await app.model.Block.findAll({
-				condition: {
-					id: {
-						$in: query.ids
+		(async () => {
+			try {
+				let blocks = await app.model.Block.findAll({
+					condition: {
+						id: {
+							$in: query.ids
+						},
+						height: { $between: [query.min, query.max] }
 					},
-					height: { $between: [query.min, query.max] }
-				},
-				sort: {
-					height: 1
-				},
-			})
-			console.log('findCommon', query, blocks)
-			if (!blocks || !blocks.length) {
-				return cb('Common block not found')
+					sort: {
+						height: 1
+					},
+				})
+				console.log('findCommon', query, blocks)
+				if (!blocks || !blocks.length) {
+					return cb('Common block not found')
+				}
+				return cb(null, blocks[blocks.length - 1])
+			} catch (e) {
+				return cb('Failed to find common block: ' + e)
 			}
-			return cb(null, blocks[blocks.length - 1])
-		} catch (e) {
-			return cb('Failed to find common block: ' + e)
-		}
-	})()
+		})()
 }
 
 Blocks.prototype.getCommonBlock = async function (height, peer, cb) {
@@ -627,39 +651,39 @@ Blocks.prototype.getBlocks = function (req, cb) {
 
 Blocks.prototype.getBlocksAfter = function (req, cb) {
 	let query = req.query
-	(async () => {
-		let height = query.lastBlockHeight
-		let blocks = await app.model.Block.findAll({
-			condition: {
-				height: { $gt: height }
-			},
-			limit: 200,
-			sort: { height: 1 }
-		})
-		if (!blocks || !blocks.length) return cb('Failed to get blocks afet ' + height)
-		// console.log('get blocks', blocks)
-		let maxHeight = blocks[blocks.length - 1].height
-		let transactions = await app.model.Transaction.findAll({
-			condition: {
-				height: { $gt: height, $lte: maxHeight }
-			}
-		})
-		// console.log('get transactions', transactions)
-		let firstHeight = blocks[0].height
-		for (let i in transactions) {
-			let t = transactions[i]
-			t.args = t.args ? JSON.parse(t.args) : []
-			let h = t.height
-			let b = blocks[h - firstHeight]
-			if (!!b) {
-				if (!b.transactions) {
-					b.transactions = []
+		(async () => {
+			let height = query.lastBlockHeight
+			let blocks = await app.model.Block.findAll({
+				condition: {
+					height: { $gt: height }
+				},
+				limit: 200,
+				sort: { height: 1 }
+			})
+			if (!blocks || !blocks.length) return cb('Failed to get blocks afet ' + height)
+			// console.log('get blocks', blocks)
+			let maxHeight = blocks[blocks.length - 1].height
+			let transactions = await app.model.Transaction.findAll({
+				condition: {
+					height: { $gt: height, $lte: maxHeight }
 				}
-				b.transactions.push(t)
+			})
+			// console.log('get transactions', transactions)
+			let firstHeight = blocks[0].height
+			for (let i in transactions) {
+				let t = transactions[i]
+				t.args = t.args ? JSON.parse(t.args) : []
+				let h = t.height
+				let b = blocks[h - firstHeight]
+				if (!!b) {
+					if (!b.transactions) {
+						b.transactions = []
+					}
+					b.transactions.push(t)
+				}
 			}
-		}
-		cb(null, {blocks: blocks})
-	})()
+			cb(null, { blocks: blocks })
+		})()
 }
 
 Blocks.prototype.onMessage = function (query) {
@@ -727,6 +751,8 @@ Blocks.prototype.onBind = function (_modules) {
 
 	(async () => {
 		try {
+			app.meta = await PIFY(modules.api.dapps.getDApp)()
+			// console.log('app.meta', app.meta)
 			let count = await app.model.Block.count()
 			console.log('Blocks found:', count)
 			if (count === 0) {
@@ -739,8 +765,6 @@ Blocks.prototype.onBind = function (_modules) {
 				})
 				self.setLastBlock(block)
 			}
-			app.meta = await PIFY(modules.api.dapps.getDApp)()
-			// console.log('app.meta', app.meta)
 			library.bus.message('blockchainLoaded')
 		} catch (e) {
 			library.logger('Failed to prepare local blockchain', e)

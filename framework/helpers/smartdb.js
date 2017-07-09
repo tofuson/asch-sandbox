@@ -16,25 +16,25 @@ function fromMapToToken(obj) {
   let i = 0
   let result = []
   for (let k in obj) {
-    result.push(k + '@' + obj[k])
+    result.push(k + ':' + obj[k])
   }
   if (!result) throw new Error('Empty condition not supported')
-  return result.join('.')
+  return result.join(',')
 }
 
 function fromIndexSchemaToToken(i, values) {
   let key = ''
   if (typeof i === 'string') {
     if (!values[i]) throw new Error('Empty index not supported: ' + i)
-    key = i + '@' + values[i]
+    key = i + ':' + values[i]
   } else if (Array.isArray(i)) {
     let keyGroup = []
     for (let j in i) {
       let k = i[j]
       if (!values[k]) throw new Error('Empty index not supported: ' + k)
-      keyGroup.push(k + '@' + values[k])
+      keyGroup.push(k + ':' + values[k])
     }
-    key = keyGroup.join('.')
+    key = keyGroup.join(',')
   } else {
     throw new Error('Index format not supported')
   }
@@ -161,6 +161,22 @@ class SmartDB {
     return value || null
   }
 
+  keys(model) {
+    if (!model) throw new Error('Invalid params')
+    let invertedList = this.indexes.get(model)
+    let schema = this.indexSchema.get(model)
+    if (!invertedList || !schema) throw new Error('Model not found in cache: ' + model)
+    return invertedList.keys()
+  }
+
+  entries(model) {
+    if (!model) throw new Error('Invalid params')
+    let invertedList = this.indexes.get(model)
+    let schema = this.indexSchema.get(model)
+    if (!invertedList || !schema) throw new Error('Model not found in cache: ' + model)
+    return invertedList.entries()
+  }
+
   lock(key) {
     if (this.lockCache.has(key)) throw new Error('Key is locked in this block: ' + key)
     this.trsLogs.push(['Lock', key])
@@ -260,7 +276,7 @@ class SmartDB {
     let invertedList = this.indexes.get(model)
     if (!invertedList) return
 
-    let indexKey = c.join('@')
+    let indexKey = c.join(':')
     let item = invertedList.get(indexKey)
     if (!item) return
     this.trsLogs[this.trsLogs.length - 1].push(item)
@@ -268,7 +284,7 @@ class SmartDB {
     let schema = this.indexSchema.get(model)
     for (let k in item) {
       if (schema.indexes.indexOf(k) != -1) {
-        indexKey = k + '@' + item[k]
+        indexKey = k + ':' + item[k]
         invertedList.delete(indexKey)
       }
     }
@@ -281,7 +297,7 @@ class SmartDB {
 
     let schema = this.indexSchema.get(model)
     schema.indexes.forEach(function (i) {
-      let indexKey = i + '@' + oldItem[i]
+      let indexKey = i + ':' + oldItem[i]
       if (!!invertedList.get(indexKey)) throw Error('Index should have been deleted')
       invertedList.set(indexKey, oldItem)
     })

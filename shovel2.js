@@ -10,6 +10,7 @@ var ORM = require('./framework/helpers/orm')
 var SmartDB = require('./framework/helpers/smartdb')
 var BalanceManager = require('./framework/helpers/balance-manager')
 var AutoIncrement = require('./framework/helpers/auto-increment')
+var FeePool = require('./framework/helpers/fee-pool')
 
 var rootDir = path.join(__dirname, 'framework')
 var entryFile = path.join(rootDir, 'index.js')
@@ -190,7 +191,8 @@ async function main() {
         defaultFee: {
             currency: 'XAS',
             min: '10000000'
-        }
+        },
+        feePool: null
     }
     app.validators = {
         amount: function (value) {
@@ -220,10 +222,8 @@ async function main() {
         return app.feeMapping[type]
     }
     app.setDefaultFee = function (min, currency) {
-        app.defajultFee = {
-            currency: currency,
-            min: min
-        }
+        app.defaultFee.currency = currency
+        app.defaultFee.min = min
     }
 
     app.db = new ORM('', '', '', {
@@ -235,6 +235,7 @@ async function main() {
     app.sdb = new SmartDB(app)
     app.balances = new BalanceManager(app.sdb)
     app.autoID = new AutoIncrement(app.sdb)
+    app.feePool = new FeePool(app.sdb)
     app.route = new Route()
     app.events = new EventEmitter()
 
@@ -246,7 +247,8 @@ async function main() {
     await loadInterfaces(path.join(dappRootDir, 'interface'))
 
     await app.sdb.load('Balance', app.model.Balance.fields(), [['address', 'currency']])
-    await app.sdb.load('Variable', ['value'], ['key'])
+    await app.sdb.load('Variable', ['key', 'value'], ['key'])
+    await app.sdb.load('RoundFee', app.model.RoundFee.fields(), [['round', 'currency']])
 
     app.contractTypeMapping[1] = 'core.deposit'
     app.contractTypeMapping[2] = 'core.withdrawal'
