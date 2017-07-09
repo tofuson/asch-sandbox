@@ -127,6 +127,16 @@ describe('smartdb-orm', () => {
     sdb.commitTransaction()
     assert.equal(sdb.get('User', { name: USER1.name }), null)
 
+    let age = sdb.get('User', { name: USER2.name }).age
+    sdb.beginTransaction()
+    sdb.increment('User', { age: 1 }, { name: USER2.name })
+    assert.equal(sdb.get('User', { name: USER2.name }).age, age + 1)
+    sdb.rollbackTransaction()
+    assert.equal(sdb.get('User', { name: USER2.name }).age, age)
+    sdb.increment('User', { age: -1 }, { name: USER2.name })
+    assert.equal(sdb.get('User', { name: USER2.name }).age, age - 1)
+    sdb.commitTransaction()
+
     await sdb.commitBlock()
 
     let user1 = await app.model.User.findOne({ condition: { id: USER1.id } })
@@ -135,7 +145,7 @@ describe('smartdb-orm', () => {
 
     let user2 = await app.model.User.findOne({ condition: { id: USER2.id } })
     assert.notEqual(user2, null)
-    assert.equal(user2.age, 45)
+    assert.equal(user2.age, age - 1)
 
     let count = await app.model.User.count({ id: USER2.id })
     assert.equal(count, 1)
@@ -181,7 +191,7 @@ describe('smartdb-orm', () => {
     assert.equal(obj.balance, '500')
   })
 
-  it.only('test auto increment id', async() => {
+  it('test auto increment id', async () => {
     let sdb = new SmartDB(app)
     let autoID = new AutoIncrement(sdb)
     await sdb.load('Variable', ['value'], ['key'])

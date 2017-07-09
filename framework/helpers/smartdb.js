@@ -268,6 +268,47 @@ class SmartDB {
     })
   }
 
+  increment(model, modifier, cond) {
+    if (!model || !modifier || !cond) throw new Error('Invalid params')
+
+    this.trsLogs.push(['Increment', model, modifier, cond])
+    let invertedList = this.indexes.get(model)
+    if (!invertedList) return
+
+    let token = fromMapToToken(cond)
+    let item = invertedList.get(token)
+    if (!item) return
+    for (let field in modifier) {
+      item[field] += modifier[field]
+    }
+  }
+
+  undoIncrement(model, modifier, cond) {
+    let invertedList = this.indexes.get(model)
+    if (!invertedList) return
+
+    let token = fromMapToToken(cond)
+
+    let item = invertedList.get(token)
+    if (!item) return
+
+    for (let field in modifier) {
+      item[field] -= modifier[field]
+    }
+  }
+
+  buildIncrement(model, modifier, cond) {
+    let table = fromModelToTable(model)
+    return jsonSql.build({
+      type: 'update',
+      table: table,
+      modifier: {
+        $inc: modifier
+      },
+      condition: cond
+    })
+  }
+
   del(model, cond) {
     if (!model || !cond) throw new Error('Invalid params')
     let c = deconstruct(cond)
